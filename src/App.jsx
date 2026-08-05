@@ -58,8 +58,10 @@ function App() {
     fetchStudents()
     fetchLogsForTodayOnly()
 
-    // 1초마다 now 갱신
-    const timer = setInterval(() => setNow(new Date()), 1000)
+    // 💡 함수형 업데이트(prev => new Date())를 사용하여 타이머가 멈추지 않고 매초 작동하도록 수정
+    const timer = setInterval(() => {
+      setNow(new Date())
+    }, 1000)
 
     const handleFocus = () => {
       fetchStudents()
@@ -623,7 +625,6 @@ function App() {
             const isEditing = editingId === student.id
             const cardStatus = getCardStatus(student)
             
-            // 이제 1초마다 now가 바뀔 때 이 함수가 실행되면서 실시간으로 초가 올라갑니다!
             const todayStats = calculateSubjectDurations(student, todayLogsData)
 
             let cardBgClass = 'card-normal'
