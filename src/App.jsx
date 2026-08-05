@@ -50,18 +50,20 @@ function App() {
   const [selectedStudent, setSelectedStudent] = useState(null)
   const [studentLogs, setStudentLogs] = useState([])
   const [calendarDate, setCalendarDate] = useState(new Date())
-  const [allLogsMap, setAllLogsMap] = useState({})
+  const [todayLogsData, setTodayLogsData] = useState([])
 
   useEffect(() => {
     if (!userRole) return
 
     fetchStudents()
+    fetchLogsForTodayOnly()
 
-    // 1초마다 now 갱신 -> 화면 타이머가 초 단위로 움직임
+    // 1초마다 now 갱신
     const timer = setInterval(() => setNow(new Date()), 1000)
 
     const handleFocus = () => {
       fetchStudents()
+      fetchLogsForTodayOnly()
     }
     window.addEventListener('focus', handleFocus)
 
@@ -79,7 +81,10 @@ function App() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'attendance_logs' },
-        () => fetchStudents()
+        () => {
+          fetchStudents()
+          fetchLogsForTodayOnly()
+        }
       )
       .subscribe()
 
@@ -115,24 +120,18 @@ function App() {
   async function fetchStudents() {
     const { data, error } = await supabase.from('students').select().order('id', { ascending: true })
     if (!error) {
-      const studentList = data || []
-      setStudents(studentList)
-      fetchAllLogsForToday(studentList)
+      setStudents(data || [])
     }
   }
 
-  async function fetchAllLogsForToday(studentList) {
+  async function fetchLogsForTodayOnly() {
     const { data, error } = await supabase
       .from('attendance_logs')
       .select('*')
       .order('created_at', { ascending: true })
 
     if (!error) {
-      const logsMap = {}
-      studentList.forEach(st => {
-        logsMap[st.name] = calculateSubjectDurations(st, data || [])
-      })
-      setAllLogsMap(logsMap)
+      setTodayLogsData(data || [])
     }
   }
 
@@ -277,6 +276,7 @@ function App() {
     const logStatus = student.attendance === '등원' ? `${subject} 전환` : '등원'
     await logAttendance(student.name, subject, logStatus)
     fetchStudents()
+    fetchLogsForTodayOnly()
   }
 
   async function handleStatusChange(student, status) {
@@ -291,6 +291,7 @@ function App() {
 
     await logAttendance(student.name, student.current_subject || '일반', status)
     fetchStudents()
+    fetchLogsForTodayOnly()
   }
 
   async function openStudentCalendar(student) {
@@ -372,7 +373,6 @@ function App() {
     }
   }
 
-  // 밀리초를 받아와서 시, 분, 초 단위로 표시 (총 공부시간 용)
   const formatMillisWithSeconds = (ms) => {
     if (!ms || ms <= 0) return '0분 0초'
     const totalSecs = Math.floor(ms / 1000)
@@ -384,7 +384,6 @@ function App() {
     return `${h}시간 ${m}분 ${s}초`
   }
 
-  // 달력용은 기존대로 분 단위 표시
   const formatMillisForCalendar = (ms) => {
     if (!ms || ms <= 0) return '0분'
     const mins = Math.floor(ms / 60000)
@@ -624,7 +623,8 @@ function App() {
             const isEditing = editingId === student.id
             const cardStatus = getCardStatus(student)
             
-            const todayStats = allLogsMap[student.name] || { english: 0, math: 0, total: 0 }
+            // 이제 1초마다 now가 바뀔 때 이 함수가 실행되면서 실시간으로 초가 올라갑니다!
+            const todayStats = calculateSubjectDurations(student, todayLogsData)
 
             let cardBgClass = 'card-normal'
             if (cardStatus === 'next_subject') cardBgClass = 'card-next-subject'
