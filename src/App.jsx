@@ -45,15 +45,12 @@ function App() {
   const [filter, setFilter] = useState('전체')
   const [searchQuery, setSearchQuery] = useState('')
   
-  // 💡 [핵심 수정] 타이머를 강제로 작동시키기 위한 독립적인 틱(tick) 상태 추가
   const [tick, setTick] = useState(0)
-  // 매 렌더링마다 현재 시간을 새로 계산합니다.
   const now = new Date()
 
-  // 💡 [핵심 수정] 다른 어떤 데이터 통신과도 엮이지 않은 완벽히 독립된 타이머
   useEffect(() => {
     const timer = setInterval(() => {
-      setTick(prev => prev + 1) // 1초마다 무조건 상태를 변경하여 화면을 새로고침함
+      setTick(prev => prev + 1)
     }, 1000)
     
     return () => clearInterval(timer)
@@ -107,15 +104,17 @@ function App() {
   function handleLogin(e) {
     e.preventDefault()
     let role = null
-    if (passwordInput === '1234') role = 'director'
-    else if (passwordInput === '1111') role = 'english'
-    else if (passwordInput === '2222') role = 'math'
+    // 💡 비밀번호 변경 완료
+    if (passwordInput === '4507') role = 'director'
+    else if (passwordInput === '0000') role = 'english'
+    else if (passwordInput === '0926') role = 'math'
 
     if (role) {
       setUserRole(role)
       localStorage.setItem('academy_user_role', role)
     } else {
-      alert('비밀번호가 틀렸습니다.\n(원장:1234 / 영어:1111 / 수학:2222)')
+      // 💡 오류 메시지에서 비밀번호 힌트 제거
+      alert('비밀번호가 틀렸습니다.')
     }
     setPasswordInput('')
   }
@@ -529,9 +528,9 @@ function App() {
       <div className="login-container">
         <form onSubmit={handleLogin} className="login-form">
           <h2 className="login-title">🔐 학원 시스템 로그인</h2>
+          {/* 💡 로그인 화면에서 비밀번호 힌트 제거 */}
           <p className="login-desc">
-            비밀번호를 입력해 주세요.<br/>
-            (원장: 1234 / 영어: 1111 / 수학: 2222)
+            비밀번호를 입력해 주세요.
           </p>
           <input
             type="password"
@@ -657,8 +656,8 @@ function App() {
                         </select>
                         <select value={editSubjects} onChange={(e) => setEditSubjects(e.target.value)} className="edit-select">
                           <option value="영어+수학">영어+수학</option>
-                          <option value="영어">영어만</option>
-                          <option value="수학">수학만</option>
+                          <option value="영어만">영어만</option>
+                          <option value="수학만">수학만</option>
                         </select>
                       </>
                     ) : (
