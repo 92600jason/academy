@@ -2,307 +2,236 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 }
 
 body {
-  background-color: #f4f6f8;
-  color: #333;
+  background-color: #f8fafc;
+  color: #1e293b;
 }
 
 .app-container {
-  max-width: 1200px;
+  max-width: 1000px;
   margin: 0 auto;
   padding: 20px;
 }
 
-/* 헤더 */
-.header {
+.app-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   background: #ffffff;
-  padding: 20px 24px;
+  padding: 16px 20px;
   border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
   margin-bottom: 20px;
 }
 
-.header h1 {
-  font-size: 1.5rem;
-  color: #1e293b;
+.app-title {
+  font-size: 1.25rem;
+  font-weight: 700;
 }
 
-.header-controls {
+.app-role-badge {
+  font-size: 0.9rem;
+  color: #2563eb;
+  margin-left: 8px;
+}
+
+.logout-btn {
+  padding: 6px 12px;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.register-form {
   display: flex;
-  gap: 12px;
-  align-items: center;
+  gap: 8px;
+  background: #ffffff;
+  padding: 16px;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  margin-bottom: 20px;
 }
 
-.role-selector select, .date-picker {
+.form-input, .form-select {
   padding: 8px 12px;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
-  font-size: 0.95rem;
-}
-
-/* 레이아웃 분할 */
-.main-content {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 20px;
-}
-
-@media (max-width: 900px) {
-  .main-content {
-    grid-template-columns: 1fr;
-  }
-}
-
-.card {
-  background: #ffffff;
-  padding: 20px;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-  margin-bottom: 20px;
-}
-
-/* 신규 학생 등록 폼 */
-.add-student-card h3 {
-  margin-bottom: 14px;
-  font-size: 1.1rem;
-  color: #334155;
-}
-
-.add-student-form {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 10px;
-}
-
-.add-student-form input, 
-.add-student-form select {
-  padding: 10px;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
   font-size: 0.9rem;
-  width: 100%;
 }
 
-.btn-primary {
+.name-input { flex: 2; }
+.level-select, .subject-select, .duration-select { flex: 1; }
+
+.submit-btn {
+  padding: 8px 16px;
   background: #2563eb;
-  color: #fff;
+  color: white;
   border: none;
-  padding: 10px 16px;
   border-radius: 6px;
-  cursor: pointer;
   font-weight: 600;
-  grid-column: span 1;
+  cursor: pointer;
 }
 
-.btn-primary:hover {
-  background: #1d4ed8;
-}
-
-/* 검색 및 탭 */
-.filter-bar {
-  margin-bottom: 16px;
+.search-filter-container {
+  margin-bottom: 20px;
 }
 
 .search-input {
   width: 100%;
-  padding: 12px;
+  padding: 10px 14px;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   font-size: 0.95rem;
   margin-bottom: 12px;
-  background: #fff;
 }
 
-.tab-buttons {
+.filter-tabs {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
-.tab-btn {
-  padding: 8px 14px;
+.filter-tab-btn {
+  padding: 6px 14px;
+  background: white;
   border: 1px solid #cbd5e1;
-  background: #fff;
   border-radius: 20px;
-  cursor: pointer;
   font-size: 0.85rem;
+  cursor: pointer;
   color: #64748b;
-  transition: all 0.2s;
 }
 
-.tab-btn.active {
+.filter-tab-btn.active {
   background: #2563eb;
-  color: #fff;
+  color: white;
   border-color: #2563eb;
   font-weight: 600;
 }
 
-/* 학생 카드 리스트 */
-.student-grid {
+.student-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
 .student-card {
-  background: #fff;
+  background: white;
+  padding: 16px 20px;
+  border-radius: 12px;
   border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.card-normal { border-left: 5px solid #cbd5e1; }
+.card-next-subject { border-left: 5px solid #f59e0b; background: #fffbeb; }
+.card-finished { border-left: 5px solid #10b981; background: #ecfdf5; }
+
+.card-top-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  transition: transform 0.1s ease;
 }
 
-.student-card.status-in {
-  border-left: 5px solid #22c55e;
-}
-
-.student-card.status-out {
-  border-left: 5px solid #ef4444;
-}
-
-.student-header {
+.card-left-info {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 4px;
 }
 
-.student-name {
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: #0f172a;
-}
+.student-name { font-size: 1.1rem; }
+.student-meta { font-size: 0.85rem; color: #64748b; }
+.attendance-badge { font-size: 0.85rem; font-weight: 600; }
+.status-attending { color: #2563eb; }
+.status-leaving { color: #ef4444; }
+.status-absent { color: #94a3b8; }
 
-.student-badge {
-  background: #e2e8f0;
-  color: #475569;
-  font-size: 0.75rem;
+.calendar-open-btn {
   padding: 2px 8px;
-  border-radius: 12px;
+  font-size: 0.75rem;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  cursor: pointer;
 }
 
-.student-sub, .student-phone {
+.card-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.action-btn {
+  padding: 6px 12px;
+  border: 1px solid #cbd5e1;
+  background: white;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.btn-eng-active { background: #3b82f6 !important; color: white !important; border-color: #3b82f6 !important; }
+.btn-math-active { background: #8b5cf6 !important; color: white !important; border-color: #8b5cf6 !important; }
+.btn-leave-active { background: #ef4444 !important; color: white !important; border-color: #ef4444 !important; }
+.btn-absent-active { background: #64748b !important; color: white !important; border-color: #64748b !important; }
+
+.utility-btn {
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+}
+.btn-edit { background: #e2e8f0; color: #475569; }
+.btn-delete { background: #fee2e2; color: #ef4444; }
+
+.attending-details {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #f1f5f9;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.85rem;
+}
+
+.time-adjust-select {
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+  font-size: 0.8rem;
+}
+
+.non-attending-summary {
+  margin-top: 8px;
   font-size: 0.85rem;
   color: #64748b;
 }
 
-.status-indicator {
-  font-size: 0.85rem;
-  margin-top: 6px;
-}
-
-.student-actions {
+.edit-form {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.action-btn {
-  padding: 8px 12px;
-  border: 1px solid #cbd5e1;
-  background: #f8fafc;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.85rem;
-}
-
-.action-btn:hover {
-  background: #f1f5f9;
-}
-
-.btn-eng-active {
-  background: #3b82f6 !important;
-  color: #fff !important;
-  border-color: #3b82f6 !important;
-}
-
-.btn-math-active {
-  background: #8b5cf6 !important;
-  color: #fff !important;
-  border-color: #8b5cf6 !important;
-}
-
-.btn-checkout {
-  background: #ef4444;
-  color: #fff;
-  border: none;
-}
-
-.btn-checkout:disabled {
-  background: #f1f5f9;
-  color: #cbd5e1;
-  cursor: not-allowed;
-}
-
-.admin-btn-group {
-  display: flex;
-  gap: 4px;
-  margin-left: 6px;
-  border-left: 1px solid #e2e8f0;
-  padding-left: 6px;
-}
-
-.btn-edit, .btn-delete {
-  padding: 6px 10px;
-  font-size: 0.75rem;
-  border-radius: 4px;
-  border: none;
-  cursor: pointer;
-}
-
-.btn-edit { background: #cbd5e1; color: #334155; }
-.btn-delete { background: #fee2e2; color: #ef4444; }
-
-/* 오른쪽 로그 */
-.log-list {
-  display: flex;
-  flex-direction: column;
   gap: 8px;
-  max-height: 500px;
-  overflow-y: auto;
-}
-
-.log-item {
-  display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  background: #f8fafc;
+}
+
+.edit-name-input, .edit-select {
+  padding: 6px 10px;
+  border: 1px solid #cbd5e1;
   border-radius: 6px;
-  font-size: 0.85rem;
 }
 
-.log-badge {
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.badge-in { background: #dcfce7; color: #15803d; }
-.badge-out { background: #fee2e2; color: #b91c1c; }
-
-.btn-time-edit {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 0.9rem;
-}
+.save-btn { padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; }
+.cancel-btn { padding: 6px 12px; background: #94a3b8; color: white; border: none; border-radius: 6px; cursor: pointer; }
+.edit-notice-text { font-size: 0.8rem; color: #64748b; }
 
 /* 모달 */
 .modal-backdrop {
   position: fixed;
-  top:0; left:0; right:0; bottom:0;
+  top: 0; left: 0; right: 0; bottom: 0;
   background: rgba(0,0,0,0.5);
   display: flex;
   justify-content: center;
@@ -310,44 +239,99 @@ body {
   z-index: 1000;
 }
 
-.modal-card {
-  background: #fff;
+.modal-box {
+  background: white;
   padding: 24px;
   border-radius: 12px;
   width: 90%;
-  max-width: 400px;
+  max-width: 500px;
 }
 
-.form-group {
-  margin-bottom: 12px;
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
 }
 
-.form-group label {
-  display: block;
-  font-size: 0.85rem;
-  margin-bottom: 4px;
+.modal-close-btn {
+  background: none;
+  border: none;
+  font-size: 0.9rem;
+  cursor: pointer;
   color: #64748b;
 }
 
-.form-group input, .form-group select {
+.modal-nav-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.modal-nav-btn {
+  padding: 4px 8px;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.calendar-header-grid, .calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  text-align: center;
+}
+
+.calendar-header-grid {
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin-bottom: 8px;
+}
+
+.calendar-day {
+  min-height: 50px;
+  border: 1px solid #f1f5f9;
+  border-radius: 6px;
+  padding: 2px;
+  font-size: 0.7rem;
+}
+
+.calendar-day.has-data {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.login-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+
+.login-form {
+  background: white;
+  padding: 30px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  text-align: center;
+}
+
+.login-input {
   width: 100%;
-  padding: 8px;
+  padding: 10px;
+  margin: 16px 0;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
 }
 
-.modal-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  margin-top: 16px;
-}
-
-.btn-secondary {
-  background: #e2e8f0;
-  color: #475569;
+.login-btn {
+  width: 100%;
+  padding: 10px;
+  background: #2563eb;
+  color: white;
   border: none;
-  padding: 8px 16px;
   border-radius: 6px;
   cursor: pointer;
 }
