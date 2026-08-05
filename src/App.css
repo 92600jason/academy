@@ -258,36 +258,44 @@ body {
 
 .card-actions {
   display: flex;
-  gap: 5px;
+  gap: 4px;
   align-items: center;
   flex-wrap: wrap;
 }
 
 .action-btn {
-  padding: 5px 10px;
+  padding: 6px 10px;
   font-size: 12px;
+  font-weight: bold;
   border: 1px solid #cbd5e0;
   border-radius: 4px;
-  background: white;
+  background-color: #ffffff;
+  color: #2d3748;
   cursor: pointer;
+}
+
+.action-btn:hover {
+  background-color: #edf2f7;
 }
 
 .btn-default:hover { background: #edf2f7; }
-.btn-eng-active { background: #ebf8ff; border-color: #3182ce; color: #2b6cb0; font-weight: bold; }
-.btn-math-active { background: #faf5ff; border-color: #805ad5; color: #553c9a; font-weight: bold; }
-.btn-leave-active { background: #feebc8; border-color: #d69e2e; color: #744210; font-weight: bold; }
-.btn-absent-active { background: #edf2f7; border-color: #a0aec0; color: #2d3748; font-weight: bold; }
+.btn-eng-active { background: #ebf8ff !important; border-color: #3182ce !important; color: #2b6cb0 !important; }
+.btn-math-active { background: #faf5ff !important; border-color: #805ad5 !important; color: #553c9a !important; }
+.btn-leave-active { background: #feebc8 !important; border-color: #d69e2e !important; color: #744210 !important; }
+.btn-absent-active { background: #edf2f7 !important; border-color: #a0aec0 !important; color: #2d3748 !important; }
 
 .utility-btn {
-  padding: 5px 8px;
+  padding: 6px 8px;
   font-size: 12px;
-  border: none;
+  border: 1px solid #cbd5e0;
   border-radius: 4px;
   cursor: pointer;
+  background-color: #ffffff;
+  color: #4a5568;
 }
 
-.btn-edit { background: #e2e8f0; color: #4a5568; }
-.btn-delete { background: #fed7d7; color: #9b2c2c; }
+.btn-edit { background: #e2e8f0; color: #4a5568; border-color: #cbd5e0; }
+.btn-delete { background: #fed7d7; color: #9b2c2c; border-color: #feb2b2; }
 
 .attending-details {
   margin-top: 10px;
