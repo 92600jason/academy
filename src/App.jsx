@@ -57,6 +57,7 @@ function App() {
 
     fetchStudents()
 
+    // 1초마다 now 갱신 -> 화면 타이머가 초 단위로 움직임
     const timer = setInterval(() => setNow(new Date()), 1000)
 
     const handleFocus = () => {
@@ -190,7 +191,6 @@ function App() {
       default_duration: newDuration
     }
 
-    // 원장님만 이름, 학년, 과목 구성을 수정할 수 있음
     if (userRole === 'director') {
       updateData.name = editName
       updateData.school_level = editSchoolLevel
@@ -309,8 +309,8 @@ function App() {
   const calculateSubjectDurations = (student, logs) => {
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
     
-    let englishMins = 0
-    let mathMins = 0
+    let englishMs = 0
+    let mathMs = 0
 
     let currentSubject = null
     let startTime = null
@@ -324,20 +324,20 @@ function App() {
 
       if (log.status === '등원' || log.status.includes('전환')) {
         if (currentSubject && startTime) {
-          const durationMins = Math.floor((logDate.getTime() - startTime.getTime()) / (1000 * 60))
-          if (durationMins > 0 && durationMins < 600) {
-            if (currentSubject === '영어') englishMins += durationMins
-            if (currentSubject === '수학') mathMins += durationMins
+          const diff = logDate.getTime() - startTime.getTime()
+          if (diff > 0 && diff < 21600000) {
+            if (currentSubject === '영어') englishMs += diff
+            if (currentSubject === '수학') mathMs += diff
           }
         }
         currentSubject = log.subject
         startTime = logDate
       } else if (log.status === '하원' || log.status === '미등원' || log.status.includes('종료')) {
         if (currentSubject && startTime) {
-          const durationMins = Math.floor((logDate.getTime() - startTime.getTime()) / (1000 * 60))
-          if (durationMins > 0 && durationMins < 600) {
-            if (currentSubject === '영어') englishMins += durationMins
-            if (currentSubject === '수학') mathMins += durationMins
+          const diff = logDate.getTime() - startTime.getTime()
+          if (diff > 0 && diff < 21600000) {
+            if (currentSubject === '영어') englishMs += diff
+            if (currentSubject === '수학') mathMs += diff
           }
         }
         currentSubject = null
@@ -346,34 +346,48 @@ function App() {
     })
 
     if (currentSubject && startTime) {
-      const durationMins = Math.floor((now.getTime() - startTime.getTime()) / (1000 * 60))
-      if (durationMins > 0 && durationMins < 600) {
-        if (currentSubject === '영어') englishMins += durationMins
-        if (currentSubject === '수학') mathMins += durationMins
+      const diff = now.getTime() - startTime.getTime()
+      if (diff > 0 && diff < 21600000) {
+        if (currentSubject === '영어') englishMs += diff
+        if (currentSubject === '수학') mathMs += diff
       }
     }
 
     if (student.attendance === '등원' && student.first_checkin_timestamp && student.current_subject) {
-      const liveMins = Math.floor((now.getTime() - student.first_checkin_timestamp) / (1000 * 60))
-      if (liveMins > 0) {
+      const liveDiff = now.getTime() - student.first_checkin_timestamp
+      if (liveDiff > 0) {
         if (student.current_subject === '영어') {
-          englishMins = Math.max(englishMins, liveMins)
+          englishMs = Math.max(englishMs, liveDiff)
         }
         if (student.current_subject === '수학') {
-          mathMins = Math.max(mathMins, liveMins)
+          mathMs = Math.max(mathMs, liveDiff)
         }
       }
     }
 
     return {
-      english: englishMins,
-      math: mathMins,
-      total: englishMins + mathMins
+      english: englishMs,
+      math: mathMs,
+      total: englishMs + mathMs
     }
   }
 
-  const formatMinutes = (mins) => {
-    if (!mins || mins <= 0) return '0분'
+  // 밀리초를 받아와서 시, 분, 초 단위로 표시 (총 공부시간 용)
+  const formatMillisWithSeconds = (ms) => {
+    if (!ms || ms <= 0) return '0분 0초'
+    const totalSecs = Math.floor(ms / 1000)
+    const h = Math.floor(totalSecs / 3600)
+    const m = Math.floor((totalSecs % 3600) / 60)
+    const s = totalSecs % 60
+
+    if (h === 0) return `${m}분 ${s}초`
+    return `${h}시간 ${m}분 ${s}초`
+  }
+
+  // 달력용은 기존대로 분 단위 표시
+  const formatMillisForCalendar = (ms) => {
+    if (!ms || ms <= 0) return '0분'
+    const mins = Math.floor(ms / 60000)
     const h = Math.floor(mins / 60)
     const m = mins % 60
     if (h === 0) return `${m}분`
@@ -381,22 +395,19 @@ function App() {
     return `${h}시간 ${m}분`
   }
 
-  // 👑 선생님 모드별 과목 필터링 적용 (원장: 전부, 영어쌤: 영어 관련, 수학쌤: 수학 관련)
   const roleFilteredStudents = students.filter(student => {
     const userSubjects = student.subjects || '영어+수학'
     if (userRole === 'english') {
-      // 영어쌤 화면: 영어가 포함되어 있으면서, 현재 수학 수업 중(등원 상태에서 current_subject가 수학)이 아닌 학생들만 표시
       const isEnglishIncluded = userSubjects.includes('영어')
       const isCurrentlyMath = student.attendance === '등원' && student.current_subject === '수학'
       return isEnglishIncluded && !isCurrentlyMath
     }
     if (userRole === 'math') {
-      // 수학쌤 화면: 수학이 포함되어 있으면서, 현재 영어 수업 중(등원 상태에서 current_subject가 영어)이 아닌 학생들만 표시
       const isMathIncluded = userSubjects.includes('수학')
       const isCurrentlyEnglish = student.attendance === '등원' && student.current_subject === '영어'
       return isMathIncluded && !isCurrentlyEnglish
     }
-    return true // 원장님은 전체 보기
+    return true
   })
 
   const filteredStudents = roleFilteredStudents
@@ -444,20 +455,20 @@ function App() {
 
       if (log.status === '등원' || log.status.includes('전환')) {
         if (currentSubject && startTime) {
-          const durationMins = Math.floor((logDate.getTime() - startTime.getTime()) / (1000 * 60))
-          if (durationMins > 0) {
-            if (currentSubject === '영어') summary[dateKey].english += durationMins
-            if (currentSubject === '수학') summary[dateKey].math += durationMins
+          const diff = logDate.getTime() - startTime.getTime()
+          if (diff > 0) {
+            if (currentSubject === '영어') summary[dateKey].english += diff
+            if (currentSubject === '수학') summary[dateKey].math += diff
           }
         }
         currentSubject = log.subject
         startTime = logDate
       } else if (log.status === '하원' || log.status === '미등원' || log.status.includes('종료')) {
         if (currentSubject && startTime) {
-          const durationMins = Math.floor((logDate.getTime() - startTime.getTime()) / (1000 * 60))
-          if (durationMins > 0) {
-            if (currentSubject === '영어') summary[dateKey].english += durationMins
-            if (currentSubject === '수학') summary[dateKey].math += durationMins
+          const diff = logDate.getTime() - startTime.getTime()
+          if (diff > 0) {
+            if (currentSubject === '영어') summary[dateKey].english += diff
+            if (currentSubject === '수학') summary[dateKey].math += diff
           }
         }
         currentSubject = null
@@ -487,16 +498,16 @@ function App() {
       const info = dailySummary[dateStr]
 
       const hasData = info && (info.english > 0 || info.math > 0)
-      const totalMins = hasData ? (info.english + info.math) : 0
+      const totalMs = hasData ? (info.english + info.math) : 0
 
       days.push(
         <div key={day} className={`calendar-day ${hasData ? 'has-data' : ''}`}>
           <div className="calendar-day-number">{day}</div>
           {hasData ? (
             <div className="calendar-day-info">
-              <div className="calendar-total">총: {formatMinutes(totalMins)}</div>
-              {info.english > 0 && <div className="calendar-eng">영: {formatMinutes(info.english)}</div>}
-              {info.math > 0 && <div className="calendar-math">수: {formatMinutes(info.math)}</div>}
+              <div className="calendar-total">총: {formatMillisForCalendar(totalMs)}</div>
+              {info.english > 0 && <div className="calendar-eng">영: {formatMillisForCalendar(info.english)}</div>}
+              {info.math > 0 && <div className="calendar-math">수: {formatMillisForCalendar(info.math)}</div>}
             </div>
           ) : null}
         </div>
@@ -626,7 +637,6 @@ function App() {
               <div key={student.id} className={`student-card ${cardBgClass}`}>
                 {isEditing ? (
                   <div className="edit-form">
-                    {/* 원장님만 이름, 학년, 과목 수정 가능 / 선생님은 시간 설정만 가능 */}
                     {userRole === 'director' ? (
                       <>
                         <input
@@ -714,9 +724,9 @@ function App() {
                           <option value={60}>60분 전</option>
                         </select>
                         <span className="today-total-badge">
-                          오늘 총: {formatMinutes(todayStats.total)}
+                          오늘 총: {formatMillisWithSeconds(todayStats.total)}
                         </span>
-                        <span className="subject-breakdown">(영: {formatMinutes(todayStats.english)} / 수: {formatMinutes(todayStats.math)})</span>
+                        <span className="subject-breakdown">(영: {formatMillisWithSeconds(todayStats.english)} / 수: {formatMillisWithSeconds(todayStats.math)})</span>
 
                         {cardStatus === 'finished' && (
                           <span className="finished-text">[⏰ 목표완료]</span>
@@ -732,9 +742,9 @@ function App() {
 
                     {student.attendance !== '등원' && todayStats.total > 0 && (
                       <div className="non-attending-summary">
-                        <span className="summary-total">오늘 누적: 총 {formatMinutes(todayStats.total)}</span> 
-                        <span className="summary-eng"> (영어: {formatMinutes(todayStats.english)}</span>, 
-                        <span className="summary-math"> 수학: {formatMinutes(todayStats.math)})</span>
+                        <span className="summary-total">오늘 누적: 총 {formatMillisWithSeconds(todayStats.total)}</span> 
+                        <span className="summary-eng"> (영어: {formatMillisWithSeconds(todayStats.english)}</span>, 
+                        <span className="summary-math"> 수학: {formatMillisWithSeconds(todayStats.math)})</span>
                       </div>
                     )}
                   </div>
