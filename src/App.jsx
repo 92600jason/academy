@@ -1,847 +1,589 @@
-import { useEffect, useState, useRef } from 'react'
+import React, { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
 import './App.css'
 
-const GRADE_OPTIONS = [
-  '초1', '초2', '초3', '초4', '초5', '초6',
-  '중1', '중2', '중3',
-  '고1', '고2', '고3'
-]
-
-const GRADE_ORDER = {
-  '초1': 1, '초2': 2, '초3': 3, '초4': 4, '초5': 5, '초6': 6,
-  '중1': 7, '중2': 8, '중3': 9,
-  '고1': 10, '고2': 11, '고3': 12
-}
-
-const DURATION_OPTIONS = [
-  { label: '30분', value: 30 },
-  { label: '45분', value: 45 },
-  { label: '1시간 (60분)', value: 60 },
-  { label: '1.5시간 (90분)', value: 90 },
-  { label: '2시간 (120분)', value: 120 },
-  { label: '2.5시간 (150분)', value: 150 },
-  { label: '3시간 (180분)', value: 180 },
-]
-
 function App() {
-  const [userRole, setUserRole] = useState(() => {
-    return localStorage.getItem('academy_user_role') || null
-  })
-  const [passwordInput, setPasswordInput] = useState('')
-
   const [students, setStudents] = useState([])
+  const [logs, setLogs] = useState([])
+  const [selectedDate, setSelectedDate] = useState(
+    new Date().toISOString().split('T')[0]
+  )
+  const [activeTab, setActiveTab] = useState('all') // 'all', 'checkedIn', 'checkedOut', 'notCheckedIn'
+  const [userRole, setUserRole] = useState('director') // 'director', 'english', 'math'
+  const [searchTerm, setSearchTerm] = useState('')
+
+  // 신규 학생 등록 Form State
   const [newName, setNewName] = useState('')
-  const [schoolLevel, setSchoolLevel] = useState('초1')
-  const [subjects, setSubjects] = useState('영어+수학')
-  const [defaultDuration, setDefaultDuration] = useState(60)
+  const [newSchool, setNewSchool] = useState('')
+  const [newGrade, setNewGrade] = useState('')
+  const [newParentPhone, setNewParentPhone] = useState('')
+  const [newSubjects, setNewSubjects] = useState('영어+수학')
 
-  const [editingId, setEditingId] = useState(null)
+  // 학생 정보 수정 Modal State
+  const [editingStudent, setEditingStudent] = useState(null)
   const [editName, setEditName] = useState('')
-  const [editSchoolLevel, setEditSchoolLevel] = useState('초1')
+  const [editSchool, setEditSchool] = useState('')
+  const [editGrade, setEditGrade] = useState('')
+  const [editParentPhone, setEditParentPhone] = useState('')
   const [editSubjects, setEditSubjects] = useState('영어+수학')
-  const [editDefaultDuration, setEditDefaultDuration] = useState(60)
 
-  const [filter, setFilter] = useState('전체')
-  const [searchQuery, setSearchQuery] = useState('')
-  
-  const [tick, setTick] = useState(0)
-
-  // 💡 [개선 1] 알림 중복 방지: localStorage 연동으로 새로고침해도 알림 상태 유지
-  const [notifiedStudents, setNotifiedStudents] = useState(() => {
-    const saved = localStorage.getItem('academy_notified_students')
-    return saved ? JSON.parse(saved) : {}
-  })
-
+  // 초기 데이터 로드 및 Realtime 구독
   useEffect(() => {
-    localStorage.setItem('academy_notified_students', JSON.stringify(notifiedStudents))
-  }, [notifiedStudents])
-
-  // 날짜가 바뀌면(자정 지나면) 알림 기록 자동 리셋
-  useEffect(() => {
-    const todayStr = new Date().toDateString()
-    const lastSavedDate = localStorage.getItem('academy_notified_date')
-
-    if (lastSavedDate !== todayStr) {
-      setNotifiedStudents({})
-      localStorage.setItem('academy_notified_date', todayStr)
-    }
-  }, [])
-
-  const now = new Date()
-
-  // 최신 students 데이터를 타이머 안에서 참조하기 위한 Ref
-  const studentsRef = useRef(students)
-  useEffect(() => {
-    studentsRef.current = students
-  }, [students])
-
-  // [알림 권한] 최초 1회만 권한 요청
-  useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission()
-    }
-  }, [])
-
-  // 알림 발송 함수
-  const sendNotification = (student) => {
-    if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification('⏰ 수업 시간 종료 알림', {
-        body: `${student.name} 학생의 ${student.current_subject || ''} 수업 시간이 완료되었습니다!`,
-        icon: '/favicon.ico'
-      })
-    }
-  }
-
-  // 1초마다 종료 시각(end_timestamp) 도달 여부 감지
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setTick(prev => prev + 1)
-
-      const currentTime = Date.now()
-      studentsRef.current.forEach(student => {
-        if (student.attendance === '등원' && student.end_timestamp) {
-          if (currentTime >= student.end_timestamp && !notifiedStudents[student.id]) {
-            sendNotification(student)
-            setNotifiedStudents(prev => ({ ...prev, [student.id]: true }))
-          }
-        }
-      })
-    }, 1000)
-    
-    return () => clearInterval(timer)
-  }, [notifiedStudents])
-
-  const [selectedStudent, setSelectedStudent] = useState(null)
-  const [studentLogs, setStudentLogs] = useState([])
-  const [calendarDate, setCalendarDate] = useState(new Date())
-  const [todayLogsData, setTodayLogsData] = useState([])
-
-  useEffect(() => {
-    if (!userRole) return
-
     fetchStudents()
-    fetchLogsForTodayOnly()
+    fetchLogs(selectedDate)
 
-    const handleFocus = () => {
-      fetchStudents()
-      fetchLogsForTodayOnly()
-    }
-    window.addEventListener('focus', handleFocus)
-
-    const studentChannel = supabase
-      .channel('schema-db-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'students' },
-        () => fetchStudents()
-      )
-      .subscribe()
-
-    const logChannel = supabase
-      .channel('schema-log-changes')
+    const channel = supabase
+      .channel('attendance-changes')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'attendance_logs' },
         () => {
           fetchStudents()
-          fetchLogsForTodayOnly()
+          fetchLogs(selectedDate)
         }
       )
       .subscribe()
 
     return () => {
-      window.removeEventListener('focus', handleFocus)
-      supabase.removeChannel(studentChannel)
-      supabase.removeChannel(logChannel)
+      supabase.removeChannel(channel)
     }
-  }, [userRole])
+  }, [selectedDate])
 
-  function handleLogin(e) {
-    e.preventDefault()
-    let role = null
-    if (passwordInput === '4507') role = 'director'
-    else if (passwordInput === '0000') role = 'english'
-    else if (passwordInput === '0926') role = 'math'
+  // 학생 목록 불러오기
+  const fetchStudents = async () => {
+    const { data, error } = await supabase
+      .from('students')
+      .select('*')
+      .order('name', { ascending: true })
 
-    if (role) {
-      setUserRole(role)
-      localStorage.setItem('academy_user_role', role)
+    if (error) {
+      console.error('Error fetching students:', error)
     } else {
-      alert('비밀번호가 틀렸습니다.')
-    }
-    setPasswordInput('')
-  }
-
-  function handleLogout() {
-    setUserRole(null)
-    localStorage.removeItem('academy_user_role')
-  }
-
-  async function fetchStudents() {
-    const { data, error } = await supabase.from('students').select().order('id', { ascending: true })
-    if (!error) {
       setStudents(data || [])
     }
   }
 
-  async function fetchLogsForTodayOnly() {
+  // 로그 불러오기 및 학생 current_status 파악
+  const fetchLogs = async (date) => {
+    const startOfDay = `${date}T00:00:00`
+    const endOfDay = `${date}T23:59:59`
+
     const { data, error } = await supabase
       .from('attendance_logs')
       .select('*')
-      .order('created_at', { ascending: true })
+      .gte('timestamp', startOfDay)
+      .lte('timestamp', endOfDay)
+      .order('timestamp', { ascending: false })
 
-    if (!error) {
-      setTodayLogsData(data || [])
+    if (error) {
+      console.error('Error fetching logs:', error)
+    } else {
+      setLogs(data || [])
     }
   }
 
-  async function logAttendance(studentName, subject, status) {
-    try {
-      const nowObj = new Date()
-      const timeStr = nowObj.toLocaleString('ko-KR')
-      const isoStr = nowObj.toISOString()
-      await supabase.from('attendance_logs').insert([
-        { 
-          student_name: studentName, 
-          subject: subject, 
-          status: status, 
-          timestamp_str: timeStr,
-          created_at: isoStr
-        }
-      ])
-    } catch (e) {}
-  }
-
-  async function addStudent(e) {
+  // 신규 학생 등록
+  const handleAddStudent = async (e) => {
     e.preventDefault()
     if (!newName.trim()) return
 
-    const { error } = await supabase.from('students').insert([{ 
-      name: newName, 
-      school_level: schoolLevel,
-      subjects: subjects,
-      default_duration: Number(defaultDuration),
-      attendance: '미등원',
-      current_subject: null,
-      end_time: null
-    }])
+    const { error } = await supabase.from('students').insert([
+      {
+        name: newName.trim(),
+        school: newSchool.trim(),
+        grade: newGrade.trim(),
+        parent_phone: newParentPhone.trim(),
+        subjects: newSubjects
+      }
+    ])
 
     if (error) {
-      alert(`등록 실패: ${error.message}`)
+      alert('학생 등록 실패: ' + error.message)
     } else {
       setNewName('')
+      setNewSchool('')
+      setNewGrade('')
+      setNewParentPhone('')
+      setNewSubjects('영어+수학')
       fetchStudents()
     }
   }
 
-  function startEdit(student) {
-    setEditingId(student.id)
-    setEditName(student.name)
-    setEditSchoolLevel(student.school_level || '초1')
+  // 학생 정보 수정 모달 열기
+  const openEditModal = (student) => {
+    setEditingStudent(student)
+    setEditName(student.name || '')
+    setEditSchool(student.school || '')
+    setEditGrade(student.grade || '')
+    setEditParentPhone(student.parent_phone || '')
     setEditSubjects(student.subjects || '영어+수학')
-    // 현재 적용 중인 목표 시간이 있으면 가져오고, 없으면 기본 설정 시간 가져오기
-    setEditDefaultDuration(student.target_minutes || student.default_duration || 60)
   }
 
-  // 💡 [개선 2] 시간 수정 로직: 원장님은 '원래 기준 시간' 변경, 선생님은 '당일 1회성 시간'만 변경
-  async function saveEdit(student) {
-    if (!editName.trim()) return
+  // 학생 정보 수정 저장
+  const handleUpdateStudent = async (e) => {
+    e.preventDefault()
+    if (!editingStudent) return
 
-    const newDuration = Number(editDefaultDuration)
-    const updateData = {}
-
-    if (userRole === 'director') {
-      // 원장님: 이름, 학교, 과목, 그리고 '원래 기본 시간(default_duration)' 자체를 변경
-      updateData.name = editName
-      updateData.school_level = editSchoolLevel
-      updateData.subjects = editSubjects
-      updateData.default_duration = newDuration
-    }
-
-    // 등원 중인 경우 현재 수업의 목표 시간과 종료 예정 시각 즉시 업데이트
-    if (student.attendance === '등원') {
-      const baseCheckinTime = student.first_checkin_timestamp || Date.now()
-      const newEndTimeObj = new Date(baseCheckinTime + newDuration * 60000)
-      const startTimeObj = new Date(baseCheckinTime)
-      const startTimeStr = startTimeObj.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
-      const endTimeStr = newEndTimeObj.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
-
-      updateData.target_minutes = newDuration
-      updateData.end_timestamp = newEndTimeObj.getTime()
-      updateData.end_time = `${student.current_subject}(${newDuration}분): ${startTimeStr} ~ ${endTimeStr}`
-      
-      setNotifiedStudents(prev => ({ ...prev, [student.id]: false }))
-    }
-
-    const { error } = await supabase.from('students').update(updateData).eq('id', student.id)
+    const { error } = await supabase
+      .from('students')
+      .update({
+        name: editName.trim(),
+        school: editSchool.trim(),
+        grade: editGrade.trim(),
+        parent_phone: editParentPhone.trim(),
+        subjects: editSubjects
+      })
+      .eq('id', editingStudent.id)
 
     if (error) {
-      alert(`수정 실패: ${error.message}`)
+      alert('학생 정보 수정 실패: ' + error.message)
     } else {
-      setEditingId(null)
+      setEditingStudent(null)
       fetchStudents()
     }
   }
 
-  async function adjustCheckInTime(student, minutesAgo) {
-    if (!student.first_checkin_timestamp) return
-
-    const newCheckinTime = student.first_checkin_timestamp - (minutesAgo * 60000)
-    const targetMins = student.target_minutes || student.default_duration || 60
-    const newEndTimeObj = new Date(newCheckinTime + targetMins * 60000)
-
-    const startTimeObj = new Date(newCheckinTime)
-    const startTimeStr = startTimeObj.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
-    const endTimeStr = newEndTimeObj.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
-
-    setNotifiedStudents(prev => ({ ...prev, [student.id]: false }))
-
-    const { error } = await supabase.from('students').update({
-      first_checkin_timestamp: newCheckinTime,
-      end_timestamp: newEndTimeObj.getTime(),
-      end_time: `${student.current_subject}(${targetMins}분): ${startTimeStr} ~ ${endTimeStr}`
-    }).eq('id', student.id)
-
-    if (!error) {
-      fetchStudents()
+  // 학생 삭제
+  const handleDeleteStudent = async (id, name) => {
+    if (window.confirm(`${name} 학생을 정말 삭제하시겠습니까?`)) {
+      const { error } = await supabase.from('students').delete().eq('id', id)
+      if (error) {
+        alert('삭제 실패: ' + error.message)
+      } else {
+        fetchStudents()
+      }
     }
   }
 
-  async function deleteStudent(id, name) {
-    if (userRole !== 'director') {
-      alert('삭제 권한은 원장님에게만 있습니다.')
+  // 등원 처리
+  const handleCheckIn = async (student, subject) => {
+    const now = new Date()
+    const timeString = `${selectedDate}T${now.toTimeString().split(' ')[0]}`
+
+    const { error } = await supabase.from('attendance_logs').insert([
+      {
+        student_id: student.id,
+        type: '등원',
+        subject: subject,
+        timestamp: timeString
+      }
+    ])
+
+    if (error) {
+      alert('등원 처리 실패: ' + error.message)
+    } else {
+      await supabase
+        .from('students')
+        .update({
+          status: '등원',
+          current_subject: subject
+        })
+        .eq('id', student.id)
+
+      fetchStudents()
+      fetchLogs(selectedDate)
+    }
+  }
+
+  // 하원 처리
+  const handleCheckOut = async (student) => {
+    const now = new Date()
+    const timeString = `${selectedDate}T${now.toTimeString().split(' ')[0]}`
+
+    const { error } = await supabase.from('attendance_logs').insert([
+      {
+        student_id: student.id,
+        type: '하원',
+        subject: student.current_subject || '공통',
+        timestamp: timeString
+      }
+    ])
+
+    if (error) {
+      alert('하원 처리 실패: ' + error.message)
+    } else {
+      await supabase
+        .from('students')
+        .update({
+          status: '하원',
+          current_subject: null
+        })
+        .eq('id', student.id)
+
+      fetchStudents()
+      fetchLogs(selectedDate)
+    }
+  }
+
+  // ⏰ 시간 직접 수정 기능
+  const handleTimeEdit = async (log) => {
+    const currentTime = new Date(log.timestamp).toTimeString().substring(0, 5) // HH:MM
+    const newTimeInput = window.prompt('수정할 시간을 입력하세요 (HH:MM 예: 14:30)', currentTime)
+
+    if (!newTimeInput || newTimeInput === currentTime) return
+
+    // 시간 형식 검증 (HH:MM)
+    const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/
+    if (!timeRegex.test(newTimeInput)) {
+      alert('올바른 시간 형식이 아닙니다. (예: 14:30)')
       return
     }
-    if (!window.confirm(`${name} 학생을 정말 삭제하시겠습니까?`)) return
-    const { error } = await supabase.from('students').delete().eq('id', id)
-    if (!error) fetchStudents()
-  }
 
-  async function handleCheckIn(student, subject) {
-    const current = new Date()
-    // 현재 설정된 1회성 시간이 있으면 사용하고, 없으면 원장님이 정한 기본 시간 사용
-    const minutesToAdd = student.target_minutes || student.default_duration || 60
-    const endTimeObj = new Date(current.getTime() + minutesToAdd * 60000)
+    const updatedTimestamp = `${selectedDate}T${newTimeInput}:00`
 
-    const startTimeStr = current.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
-    const endTimeStr = endTimeObj.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
-
-    const isSwitching = student.attendance === '등원' && student.current_subject && student.current_subject !== subject
-
-    if (isSwitching) {
-      await logAttendance(student.name, student.current_subject, `${student.current_subject} 종료`)
-    }
-
-    setNotifiedStudents(prev => ({ ...prev, [student.id]: false }))
-
-    await supabase.from('students').update({ 
-      attendance: '등원',
-      current_subject: subject,
-      end_time: `${subject}(${minutesToAdd}분): ${startTimeStr} ~ ${endTimeStr}`,
-      end_timestamp: endTimeObj.getTime(),
-      first_checkin_timestamp: current.getTime(), 
-      target_minutes: minutesToAdd                     
-    }).eq('id', student.id)
-
-    const logStatus = student.attendance === '등원' ? `${subject} 전환` : '등원'
-    await logAttendance(student.name, subject, logStatus)
-    fetchStudents()
-    fetchLogsForTodayOnly()
-  }
-
-  // 💡 [개선 2-2] 하원 또는 미등원 처리 시: 당일 임시 설정(target_minutes)을 삭제하여 원장님의 기본 시간으로 완전 복구!
-  async function handleStatusChange(student, status) {
-    setNotifiedStudents(prev => ({ ...prev, [student.id]: false }))
-
-    await supabase.from('students').update({ 
-      attendance: status,
-      current_subject: null,
-      end_time: null,
-      end_timestamp: null,
-      first_checkin_timestamp: null,
-      target_minutes: null // ⭐ 하원/미등원 시 임시 시간을 초기화하여 원래 원장님 기본 설정 시간(default_duration)으로 복구
-    }).eq('id', student.id)
-
-    await logAttendance(student.name, student.current_subject || '일반', status)
-    fetchStudents()
-    fetchLogsForTodayOnly()
-  }
-
-  async function openStudentCalendar(student) {
-    setSelectedStudent(student)
-    setCalendarDate(new Date())
-
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('attendance_logs')
-      .select('*')
-      .eq('student_name', student.name)
-      .order('created_at', { ascending: true })
+      .update({ timestamp: updatedTimestamp })
+      .eq('id', log.id)
 
-    if (!error) setStudentLogs(data || [])
-  }
-
-  const calculateSubjectDurations = (student, logs) => {
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-    
-    let englishMs = 0
-    let mathMs = 0
-
-    let currentSubject = null
-    let startTime = null
-
-    logs.filter(l => l.student_name === student.name).forEach((log) => {
-      const logDate = log.created_at ? new Date(log.created_at) : new Date(log.timestamp_str)
-      if (isNaN(logDate.getTime())) return
-
-      const logDateStr = `${logDate.getFullYear()}-${String(logDate.getMonth() + 1).padStart(2, '0')}-${String(logDate.getDate()).padStart(2, '0')}`
-      if (logDateStr !== todayStr) return
-
-      if (log.status === '등원' || log.status.includes('전환')) {
-        if (currentSubject && startTime) {
-          const diff = logDate.getTime() - startTime.getTime()
-          if (diff > 0 && diff < 21600000) {
-            if (currentSubject === '영어') englishMs += diff
-            if (currentSubject === '수학') mathMs += diff
-          }
-        }
-        currentSubject = log.subject
-        startTime = logDate
-      } else if (log.status === '하원' || log.status === '미등원' || log.status.includes('종료')) {
-        if (currentSubject && startTime) {
-          const diff = logDate.getTime() - startTime.getTime()
-          if (diff > 0 && diff < 21600000) {
-            if (currentSubject === '영어') englishMs += diff
-            if (currentSubject === '수학') mathMs += diff
-          }
-        }
-        currentSubject = null
-        startTime = null
-      }
-    })
-
-    if (currentSubject && startTime) {
-      const diff = now.getTime() - startTime.getTime()
-      if (diff > 0 && diff < 21600000) {
-        if (currentSubject === '영어') englishMs += diff
-        if (currentSubject === '수학') mathMs += diff
-      }
-    }
-
-    if (student.attendance === '등원' && student.first_checkin_timestamp && student.current_subject) {
-      const liveDiff = now.getTime() - student.first_checkin_timestamp
-      if (liveDiff > 0) {
-        if (student.current_subject === '영어') {
-          englishMs = Math.max(englishMs, liveDiff)
-        }
-        if (student.current_subject === '수학') {
-          mathMs = Math.max(mathMs, liveDiff)
-        }
-      }
-    }
-
-    return {
-      english: englishMs,
-      math: mathMs,
-      total: englishMs + mathMs
+    if (error) {
+      alert('시간 수정 실패: ' + error.message)
+    } else {
+      fetchLogs(selectedDate)
     }
   }
 
-  const formatMillisWithSeconds = (ms) => {
-    if (!ms || ms <= 0) return '0분 0초'
-    const totalSecs = Math.floor(ms / 1000)
-    const h = Math.floor(totalSecs / 3600)
-    const m = Math.floor((totalSecs % 3600) / 60)
-    const s = totalSecs % 60
-
-    if (h === 0) return `${m}분 ${s}초`
-    return `${h}시간 ${m}분 ${s}초`
-  }
-
-  const formatMillisForCalendar = (ms) => {
-    if (!ms || ms <= 0) return '0분'
-    const mins = Math.floor(ms / 60000)
-    const h = Math.floor(mins / 60)
-    const m = mins % 60
-    if (h === 0) return `${m}분`
-    if (m === 0) return `${h}시간`
-    return `${h}시간 ${m}분`
-  }
-
-  const roleFilteredStudents = students.filter(student => {
+  // 과목 및 검색어 필터링
+  const roleFilteredStudents = students.filter((student) => {
     const userSubjects = student.subjects || '영어+수학'
+    
+    // role 조건
+    let passRole = true
     if (userRole === 'english') {
-      const isEnglishIncluded = userSubjects.includes('영어')
-      const isCurrentlyMath = student.attendance === '등원' && student.current_subject === '수학'
-      return isEnglishIncluded && !isCurrentlyMath
+      passRole = userSubjects.includes('영어')
+    } else if (userRole === 'math') {
+      passRole = userSubjects.includes('수학')
     }
-    if (userRole === 'math') {
-      const isMathIncluded = userSubjects.includes('수학')
-      const isCurrentlyEnglish = student.attendance === '등원' && student.current_subject === '영어'
-      return isMathIncluded && !isCurrentlyEnglish
-    }
+
+    // 검색어 조건
+    const passSearch =
+      student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (student.school && student.school.toLowerCase().includes(searchTerm.toLowerCase()))
+
+    return passRole && passSearch
+  })
+
+  // 탭 상태 필터링
+  const finalFilteredStudents = roleFilteredStudents.filter((student) => {
+    if (activeTab === 'checkedIn') return student.status === '등원'
+    if (activeTab === 'checkedOut') return student.status === '하원'
+    if (activeTab === 'notCheckedIn') return !student.status || student.status === '미등원'
     return true
   })
 
-  const filteredStudents = roleFilteredStudents
-    .filter(student => {
-      if (searchQuery && !student.name.includes(searchQuery)) return false
-      
-      const level = student.school_level || '초1'
-
-      if (filter === '등원') return student.attendance === '등원'
-      if (filter === '하원') return student.attendance === '하원'
-      if (filter === '미등원') return student.attendance === '미등원' || !student.attendance
-      if (filter === '초등') return level.startsWith('초')
-      if (filter === '중등') return level.startsWith('중')
-      if (filter === '고등') return level.startsWith('고')
-      return true
-    })
-    .sort((a, b) => {
-      const gradeA = GRADE_ORDER[a.school_level] || 99
-      const gradeB = GRADE_ORDER[b.school_level] || 99
-      if (gradeA !== gradeB) return gradeA - gradeB
-      return a.name.localeCompare(b.name, 'ko')
-    })
-
-  const getCardStatus = (student) => {
-    if (student.attendance !== '등원' || !student.end_timestamp) return 'normal'
-    const isExpired = now.getTime() > student.end_timestamp
-    if (!isExpired) return 'normal'
-    return (student.subjects || '영어+수학') === '영어+수학' ? 'next_subject' : 'finished'
-  }
-
-  const getDailyStudySummary = () => {
-    const summary = {}
-    let currentSubject = null
-    let startTime = null
-
-    studentLogs.forEach((log) => {
-      const logDate = log.created_at ? new Date(log.created_at) : new Date(log.timestamp_str)
-      if (isNaN(logDate.getTime())) return
-
-      const dateKey = `${logDate.getFullYear()}-${String(logDate.getMonth() + 1).padStart(2, '0')}-${String(logDate.getDate()).padStart(2, '0')}`
-
-      if (!summary[dateKey]) {
-        summary[dateKey] = { english: 0, math: 0 }
-      }
-
-      if (log.status === '등원' || log.status.includes('전환')) {
-        if (currentSubject && startTime) {
-          const diff = logDate.getTime() - startTime.getTime()
-          if (diff > 0) {
-            if (currentSubject === '영어') summary[dateKey].english += diff
-            if (currentSubject === '수학') summary[dateKey].math += diff
-          }
-        }
-        currentSubject = log.subject
-        startTime = logDate
-      } else if (log.status === '하원' || log.status === '미등원' || log.status.includes('종료')) {
-        if (currentSubject && startTime) {
-          const diff = logDate.getTime() - startTime.getTime()
-          if (diff > 0) {
-            if (currentSubject === '영어') summary[dateKey].english += diff
-            if (currentSubject === '수학') summary[dateKey].math += diff
-          }
-        }
-        currentSubject = null
-        startTime = null
-      }
-    })
-
-    return summary
-  }
-
-  const renderCalendar = () => {
-    const year = calendarDate.getFullYear()
-    const month = calendarDate.getMonth()
-
-    const firstDay = new Date(year, month, 1).getDay()
-    const daysInMonth = new Date(year, month + 1, 0).getDate()
-
-    const dailySummary = getDailyStudySummary()
-    const days = []
-
-    for (let i = 0; i < firstDay; i++) {
-      days.push(<div key={`empty-${i}`} className="calendar-empty" />)
-    }
-
-    for (let day = 1; day <= daysInMonth; day++) {
-      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-      const info = dailySummary[dateStr]
-
-      const hasData = info && (info.english > 0 || info.math > 0)
-      const totalMs = hasData ? (info.english + info.math) : 0
-
-      days.push(
-        <div key={day} className={`calendar-day ${hasData ? 'has-data' : ''}`}>
-          <div className="calendar-day-number">{day}</div>
-          {hasData ? (
-            <div className="calendar-day-info">
-              <div className="calendar-total">총: {formatMillisForCalendar(totalMs)}</div>
-              {info.english > 0 && <div className="calendar-eng">영: {formatMillisForCalendar(info.english)}</div>}
-              {info.math > 0 && <div className="calendar-math">수: {formatMillisForCalendar(info.math)}</div>}
-            </div>
-          ) : null}
-        </div>
-      )
-    }
-
-    return days
-  }
-
-  if (!userRole) {
-    return (
-      <div className="login-container">
-        <form onSubmit={handleLogin} className="login-form">
-          <h2 className="login-title">🔐 학원 시스템 로그인</h2>
-          <p className="login-desc">비밀번호를 입력해 주세요.</p>
-          <input
-            type="password"
-            placeholder="비밀번호 입력"
-            value={passwordInput}
-            onChange={(e) => setPasswordInput(e.target.value)}
-            className="login-input"
-            autoFocus
-          />
-          <button type="submit" className="login-btn">로그인</button>
-        </form>
-      </div>
-    )
-  }
-
   return (
     <div className="app-container">
-      <div className="app-header">
-        <h2 className="app-title">
-          📚 학원 출석 및 학습 시간 시스템 
-          <span className="app-role-badge">
-            ({userRole === 'director' ? '👑 원장 모드 (전체)' : userRole === 'english' ? '📖 영어 선생님 모드' : '📐 수학 선생님 모드'})
-          </span>
-        </h2>
-        <button onClick={handleLogout} className="logout-btn">로그아웃</button>
-      </div>
-
-      {userRole === 'director' && (
-        <form onSubmit={addStudent} className="register-form">
+      {/* 상단 헤더 */}
+      <header className="header">
+        <h1>📚 출석 관리 시스템</h1>
+        <div className="header-controls">
+          <label className="role-selector">
+            <span>모드 선택: </span>
+            <select value={userRole} onChange={(e) => setUserRole(e.target.value)}>
+              <option value="director">👑 원장님 (전체)</option>
+              <option value="english">🔤 영어 선생님</option>
+              <option value="math">📐 수학 선생님</option>
+            </select>
+          </label>
           <input
-            type="text"
-            placeholder="학생 이름"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            className="form-input name-input"
+            type="date"
+            className="date-picker"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
           />
-          <select value={schoolLevel} onChange={(e) => setSchoolLevel(e.target.value)} className="form-select level-select">
-            {GRADE_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
-          </select>
-          <select value={subjects} onChange={(e) => setSubjects(e.target.value)} className="form-select subject-select">
-            <option value="영어+수학">영어 + 수학</option>
-            <option value="영어만">영어만</option>
-            <option value="수학만">수학만</option>
-          </select>
-          <select value={defaultDuration} onChange={(e) => setDefaultDuration(e.target.value)} className="form-select duration-select">
-            {DURATION_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-          </select>
-          <button type="submit" className="submit-btn">등록</button>
-        </form>
-      )}
-
-      <div className="search-filter-container">
-        <input
-          type="text"
-          placeholder="🔍 학생 이름 검색..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="search-input"
-        />
-        <div className="filter-tabs">
-          {['전체', '등원', '하원', '미등원', '초등', '중등', '고등'].map((tab) => {
-            let countText = ''
-            if (tab === '등원') countText = `(${roleFilteredStudents.filter(s => s.attendance === '등원').length})`
-            if (tab === '하원') countText = `(${roleFilteredStudents.filter(s => s.attendance === '하원').length})`
-            if (tab === '미등원') countText = `(${roleFilteredStudents.filter(s => s.attendance === '미등원' || !s.attendance).length})`
-
-            return (
-              <button
-                key={tab}
-                onClick={() => setFilter(tab)}
-                className={`filter-tab-btn ${filter === tab ? 'active' : ''}`}
-              >
-                {tab} {countText}
-              </button>
-            )
-          })}
         </div>
-      </div>
+      </header>
 
-      <div className="student-list">
-        {filteredStudents.length === 0 ? (
-          <p className="no-students">해당하는 학생이 없습니다.</p>
-        ) : (
-          filteredStudents.map((student) => {
-            const isEditing = editingId === student.id
-            const cardStatus = getCardStatus(student)
-            const todayStats = calculateSubjectDurations(student, todayLogsData)
+      <main className="main-content">
+        {/* 왼쪽 섹션: 학생 목록 및 관리 */}
+        <section className="left-section">
+          {/* 학생 등록 (원장님 모드 전용) */}
+          {userRole === 'director' && (
+            <div className="card add-student-card">
+              <h3>➕ 신규 학생 등록</h3>
+              <form onSubmit={handleAddStudent} className="add-student-form">
+                <input
+                  type="text"
+                  placeholder="이름 (필수)"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  required
+                />
+                <input
+                  type="text"
+                  placeholder="학교"
+                  value={newSchool}
+                  onChange={(e) => setNewSchool(e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="학년"
+                  value={newGrade}
+                  onChange={(e) => setNewGrade(e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="학부모 연락처"
+                  value={newParentPhone}
+                  onChange={(e) => setNewParentPhone(e.target.value)}
+                />
+                <select value={newSubjects} onChange={(e) => setNewSubjects(e.target.value)}>
+                  <option value="영어+수학">영어+수학</option>
+                  <option value="영어만">영어만</option>
+                  <option value="수학만">수학만</option>
+                </select>
+                <button type="submit" className="btn-primary">등록</button>
+              </form>
+            </div>
+          )}
 
-            let cardBgClass = 'card-normal'
-            if (cardStatus === 'next_subject') cardBgClass = 'card-next-subject'
-            if (cardStatus === 'finished') cardBgClass = 'card-finished'
+          {/* 검색 및 필터 탭 */}
+          <div className="filter-bar">
+            <input
+              type="text"
+              placeholder="🔍 학생 이름 / 학교 검색..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="search-input"
+            />
+            <div className="tab-buttons">
+              <button
+                className={`tab-btn ${activeTab === 'all' ? 'active' : ''}`}
+                onClick={() => setActiveTab('all')}
+              >
+                전체 ({roleFilteredStudents.length})
+              </button>
+              <button
+                className={`tab-btn ${activeTab === 'checkedIn' ? 'active' : ''}`}
+                onClick={() => setActiveTab('checkedIn')}
+              >
+                등원 중 ({roleFilteredStudents.filter((s) => s.status === '등원').length})
+              </button>
+              <button
+                className={`tab-btn ${activeTab === 'checkedOut' ? 'active' : ''}`}
+                onClick={() => setActiveTab('checkedOut')}
+              >
+                하원 완료 ({roleFilteredStudents.filter((s) => s.status === '하원').length})
+              </button>
+              <button
+                className={`tab-btn ${activeTab === 'notCheckedIn' ? 'active' : ''}`}
+                onClick={() => setActiveTab('notCheckedIn')}
+              >
+                미등원 ({roleFilteredStudents.filter((s) => !s.status || s.status === '미등원').length})
+              </button>
+            </div>
+          </div>
 
-            const userSubjects = student.subjects || '영어+수학'
-            const nextSubject = student.current_subject === '영어' ? '수학' : '영어'
+          {/* 학생 카드 리스트 */}
+          <div className="student-grid">
+            {finalFilteredStudents.length === 0 ? (
+              <p className="no-data">해당되는 학생이 없습니다.</p>
+            ) : (
+              finalFilteredStudents.map((student) => {
+                const userSubjects = student.subjects || '영어+수학'
 
-            return (
-              <div key={student.id} className={`student-card ${cardBgClass}`}>
-                {isEditing ? (
-                  <div className="edit-form">
-                    {userRole === 'director' ? (
-                      <>
-                        <input
-                          type="text"
-                          value={editName}
-                          onChange={(e) => setEditName(e.target.value)}
-                          className="edit-name-input"
-                        />
-                        <select value={editSchoolLevel} onChange={(e) => setEditSchoolLevel(e.target.value)} className="edit-select">
-                          {GRADE_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
-                        </select>
-                        <select value={editSubjects} onChange={(e) => setEditSubjects(e.target.value)} className="edit-select">
-                          <option value="영어+수학">영어+수학</option>
-                          <option value="영어만">영어만</option>
-                          <option value="수학만">수학만</option>
-                        </select>
-                        <span className="edit-notice-text">👑 기본 고정 시간 수정</span>
-                      </>
-                    ) : (
-                      <span className="edit-notice-text">⏱️ 오늘 1회성 시간 수정</span>
-                    )}
-
-                    <select value={editDefaultDuration} onChange={(e) => setEditDefaultDuration(e.target.value)} className="edit-select">
-                      {DURATION_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                    </select>
-                    <button onClick={() => saveEdit(student)} className="save-btn">저장</button>
-                    <button onClick={() => setEditingId(null)} className="cancel-btn">취소</button>
-                  </div>
-                ) : (
-                  <div className="student-card-content">
-                    <div className="card-top-row">
-                      <div className="card-left-info">
-                        <strong className="student-name">{student.name}</strong> 
-                        <span className="student-meta">({student.school_level || '초1'} / {userSubjects})</span>
-                        <span className={`attendance-badge ${student.attendance === '등원' ? 'status-attending' : student.attendance === '하원' ? 'status-leaving' : 'status-absent'}`}>
-                          [{student.attendance || '미등원'}]
-                        </span>
-                        <button onClick={() => openStudentCalendar(student)} className="calendar-open-btn">📅 달력</button>
+                return (
+                  <div
+                    key={student.id}
+                    className={`student-card ${
+                      student.status === '등원'
+                        ? 'status-in'
+                        : student.status === '하원'
+                        ? 'status-out'
+                        : ''
+                    }`}
+                  >
+                    <div className="student-info">
+                      <div className="student-header">
+                        <span className="student-name">{student.name}</span>
+                        <span className="student-badge">{userSubjects}</span>
                       </div>
+                      <p className="student-sub">
+                        {student.school || '학교 미입력'} {student.grade ? `(${student.grade})` : ''}
+                      </p>
+                      {student.parent_phone && (
+                        <p className="student-phone">📞 {student.parent_phone}</p>
+                      )}
+                      <p className="status-indicator">
+                        상태:{' '}
+                        <strong>
+                          {student.status === '등원'
+                            ? `🟢 등원 중 (${student.current_subject || '과목미지정'})`
+                            : student.status === '하원'
+                            ? '🔴 하원 완료'
+                            : '⚪ 미등원'}
+                        </strong>
+                      </p>
+                    </div>
 
-                      <div className="card-actions">
-                        {(userRole === 'director' || userRole === 'english') && (userSubjects === '영어' || userSubjects === '영어+수학') && (
-                          <button onClick={() => handleCheckIn(student, '영어')} className={`action-btn ${student.current_subject === '영어' ? 'btn-eng-active' : 'btn-default'}`}>
+                    <div className="student-actions">
+                      {/* 영어 등원 버튼 */}
+                      {(userRole === 'director' || userRole === 'english') &&
+                        userSubjects.includes('영어') && (
+                          <button
+                            onClick={() => handleCheckIn(student, '영어')}
+                            className={`action-btn ${
+                              student.current_subject === '영어' ? 'btn-eng-active' : 'btn-default'
+                            }`}
+                          >
                             등원(영)
                           </button>
                         )}
-                        {(userRole === 'director' || userRole === 'math') && (userSubjects === '수학' || userSubjects === '영어+수학') && (
-                          <button onClick={() => handleCheckIn(student, '수학')} className={`action-btn ${student.current_subject === '수학' ? 'btn-math-active' : 'btn-default'}`}>
+
+                      {/* 수학 등원 버튼 */}
+                      {(userRole === 'director' || userRole === 'math') &&
+                        userSubjects.includes('수학') && (
+                          <button
+                            onClick={() => handleCheckIn(student, '수학')}
+                            className={`action-btn ${
+                              student.current_subject === '수학' ? 'btn-math-active' : 'btn-default'
+                            }`}
+                          >
                             등원(수)
                           </button>
                         )}
 
-                        <button onClick={() => handleStatusChange(student, '하원')} className={`action-btn ${student.attendance === '하원' ? 'btn-leave-active' : 'btn-default'}`}>
-                          하원
-                        </button>
-                        <button onClick={() => handleStatusChange(student, '미등원')} className={`action-btn ${student.attendance === '미등원' ? 'btn-absent-active' : 'btn-default'}`}>
-                          미등원
-                        </button>
-                        <button onClick={() => startEdit(student)} className="utility-btn btn-edit">수정</button>
-                        {userRole === 'director' && (
-                          <button onClick={() => deleteStudent(student.id, student.name)} className="utility-btn btn-delete">삭제</button>
-                        )}
-                      </div>
-                    </div>
+                      {/* 하원 버튼 */}
+                      <button
+                        onClick={() => handleCheckOut(student)}
+                        className="action-btn btn-checkout"
+                        disabled={student.status !== '등원'}
+                      >
+                        하원
+                      </button>
 
-                    {student.attendance === '등원' && (
-                      <div className="attending-details">
-                        <span className="end-time-text">⏱️ {student.end_time}</span>
-                        <select 
-                          onChange={(e) => {
-                            const val = Number(e.target.value)
-                            if (val > 0) adjustCheckInTime(student, val)
-                            e.target.value = 0
-                          }}
-                          defaultValue={0}
-                          className="time-adjust-select"
-                        >
-                          <option value={0} disabled>⏰ 늦게 눌렀나요?</option>
-                          <option value={5}>5분 전</option>
-                          <option value={10}>10분 전</option>
-                          <option value={15}>15분 전</option>
-                          <option value={20}>20분 전</option>
-                          <option value={30}>30분 전</option>
-                          <option value={60}>60분 전</option>
-                        </select>
-                        <span className="today-total-badge">
-                          오늘 총: {formatMillisWithSeconds(todayStats.total)}
-                        </span>
-                        <span className="subject-breakdown">(영: {formatMillisWithSeconds(todayStats.english)} / 수: {formatMillisWithSeconds(todayStats.math)})</span>
-
-                        {cardStatus === 'finished' && (
-                          <span className="finished-text">[⏰ 목표완료]</span>
-                        )}
-
-                        {cardStatus === 'next_subject' && (
-                          <button onClick={() => handleCheckIn(student, nextSubject)} className="switch-subject-btn">
-                            👉 [{nextSubject}] 전환
+                      {/* 수정/삭제 (원장님 전용) */}
+                      {userRole === 'director' && (
+                        <div className="admin-btn-group">
+                          <button
+                            onClick={() => openEditModal(student)}
+                            className="btn-edit"
+                          >
+                            수정
                           </button>
-                        )}
-                      </div>
-                    )}
-
-                    {student.attendance !== '등원' && todayStats.total > 0 && (
-                      <div className="non-attending-summary">
-                        <span className="summary-total">오늘 누적: 총 {formatMillisWithSeconds(todayStats.total)}</span> 
-                        <span className="summary-eng"> (영어: {formatMillisWithSeconds(todayStats.english)}</span>, 
-                        <span className="summary-math"> 수학: {formatMillisWithSeconds(todayStats.math)})</span>
-                      </div>
-                    )}
+                          <button
+                            onClick={() => handleDeleteStudent(student.id, student.name)}
+                            className="btn-delete"
+                          >
+                            삭제
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
-              </div>
-            )
-          })
-        )}
-      </div>
+                )
+              })
+            )}
+          </div>
+        </section>
 
-      {selectedStudent && (
+        {/* 오른쪽 섹션: 실시간 출석 로그 */}
+        <section className="right-section">
+          <div className="card log-card">
+            <h3>📋 실시간 출석 기록 ({selectedDate})</h3>
+            <div className="log-list">
+              {logs.length === 0 ? (
+                <p className="no-data">출석 기록이 없습니다.</p>
+              ) : (
+                logs.map((log) => {
+                  const matchedStudent = students.find((s) => s.id === log.student_id)
+                  const time = new Date(log.timestamp).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false
+                  })
+
+                  return (
+                    <div key={log.id} className="log-item">
+                      <span className="log-time">{time}</span>
+                      <span className="log-student">
+                        {matchedStudent ? matchedStudent.name : '미상'}
+                      </span>
+                      <span
+                        className={`log-badge ${
+                          log.type === '등원' ? 'badge-in' : 'badge-out'
+                        }`}
+                      >
+                        {log.type} ({log.subject})
+                      </span>
+                      {/* ✏️ 시간 수정 버튼 */}
+                      <button
+                        onClick={() => handleTimeEdit(log)}
+                        className="btn-time-edit"
+                        title="시간 직접 수정"
+                      >
+                        ✏️
+                      </button>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </div>
+        </section>
+      </main>
+
+      {/* 학생 정보 수정 모달 */}
+      {editingStudent && (
         <div className="modal-backdrop">
-          <div className="modal-box">
-            <div className="modal-header">
-              <h3 className="modal-title">📊 {selectedStudent.name} 학생 학습 달력</h3>
-              <button onClick={() => setSelectedStudent(null)} className="modal-close-btn">닫기</button>
-            </div>
-
-            <div className="modal-nav-row">
-              <button onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))} className="modal-nav-btn">
-                ◀ 이전달
-              </button>
-              <strong className="modal-current-month">{calendarDate.getFullYear()}년 {calendarDate.getMonth() + 1}월</strong>
-              <button onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))} className="modal-nav-btn">
-                다음달 ▶
-              </button>
-            </div>
-
-            <div className="calendar-header-grid">
-              <div className="day-sun">일</div>
-              <div>월</div>
-              <div>화</div>
-              <div>수</div>
-              <div>목</div>
-              <div>금</div>
-              <div className="day-sat">토</div>
-            </div>
-
-            <div className="calendar-grid">
-              {renderCalendar()}
-            </div>
+          <div className="modal-card">
+            <h3>✏️ 학생 정보 수정</h3>
+            <form onSubmit={handleUpdateStudent}>
+              <div className="form-group">
+                <label>이름</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>학교</label>
+                <input
+                  type="text"
+                  value={editSchool}
+                  onChange={(e) => setEditSchool(e.target.value)}
+                />
+              </div>
+              <div className="form-group">
+                <label>학년</label>
+                <input
+                  type="text"
+                  value={editGrade}
+                  onChange={(e) => setEditGrade(e.target.value)}
+                />
+              </div>
+              <div className="form-group">
+                <label>학부모 연락처</label>
+                <input
+                  type="text"
+                  value={editParentPhone}
+                  onChange={(e) => setEditParentPhone(e.target.value)}
+                />
+              </div>
+              <div className="form-group">
+                <label>수강 과목</label>
+                <select
+                  value={editSubjects}
+                  onChange={(e) => setEditSubjects(e.target.value)}
+                >
+                  <option value="영어+수학">영어+수학</option>
+                  <option value="영어만">영어만</option>
+                  <option value="수학만">수학만</option>
+                </select>
+              </div>
+              <div className="modal-actions">
+                <button type="submit" className="btn-primary">저장</button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setEditingStudent(null)}
+                >
+                  취소
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
