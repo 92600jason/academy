@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from './supabaseClient'
 import './App.css'
 
@@ -46,10 +46,16 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('')
   
   const [tick, setTick] = useState(0)
-  const [notifiedStudents, setNotifiedStudents] = useState({}) // 💡 이미 알림을 보낸 학생 기록
+  const [notifiedStudents, setNotifiedStudents] = useState({}) // 알림 중복 방지
   const now = new Date()
 
-  // 💡 [알림 권한] 최초 1회만 권한 요청 (이미 허용/거부했으면 다시 묻지 않음)
+  // 💡 최신 students 데이터를 타이머 안에서 참조하기 위한 Ref
+  const studentsRef = useRef(students)
+  useEffect(() => {
+    studentsRef.current = students
+  }, [students])
+
+  // 💡 [알림 권한] 최초 1회만 권한 요청
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission()
@@ -66,15 +72,15 @@ function App() {
     }
   }
 
-  // 💡 타이머 및 시간 만료 알림 체크
+  // 💡 1초마다 종료 시각(end_timestamp) 도달 여부 감지
   useEffect(() => {
     const timer = setInterval(() => {
       setTick(prev => prev + 1)
 
-      // 등원 중인 학생의 시간 만료 여부 감지
       const currentTime = Date.now()
-      students.forEach(student => {
+      studentsRef.current.forEach(student => {
         if (student.attendance === '등원' && student.end_timestamp) {
+          // 종료 예정 시각이 지났고, 아직 알림을 안 보낸 경우
           if (currentTime >= student.end_timestamp && !notifiedStudents[student.id]) {
             sendNotification(student)
             setNotifiedStudents(prev => ({ ...prev, [student.id]: true }))
@@ -84,7 +90,7 @@ function App() {
     }, 1000)
     
     return () => clearInterval(timer)
-  }, [students, notifiedStudents])
+  }, [notifiedStudents])
 
   const [selectedStudent, setSelectedStudent] = useState(null)
   const [studentLogs, setStudentLogs] = useState([])
@@ -242,7 +248,6 @@ function App() {
       updateData.end_timestamp = newEndTimeObj.getTime()
       updateData.end_time = `${student.current_subject}(${newDuration}분): ${startTimeStr} ~ ${endTimeStr}`
       
-      // 시간이 재설정되면 알림 기록 초기화
       setNotifiedStudents(prev => ({ ...prev, [student.id]: false }))
     }
 
@@ -267,7 +272,6 @@ function App() {
     const startTimeStr = startTimeObj.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
     const endTimeStr = newEndTimeObj.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
 
-    // 알림 기록 초기화
     setNotifiedStudents(prev => ({ ...prev, [student.id]: false }))
 
     const { error } = await supabase.from('students').update({
@@ -305,7 +309,6 @@ function App() {
       await logAttendance(student.name, student.current_subject, `${student.current_subject} 종료`)
     }
 
-    // 등원/전환 시 알림 상태 초기화
     setNotifiedStudents(prev => ({ ...prev, [student.id]: false }))
 
     await supabase.from('students').update({ 
@@ -324,7 +327,6 @@ function App() {
   }
 
   async function handleStatusChange(student, status) {
-    // 하원/미등원 시 알림 상태 초기화
     setNotifiedStudents(prev => ({ ...prev, [student.id]: false }))
 
     await supabase.from('students').update({ 
@@ -568,9 +570,7 @@ function App() {
       <div className="login-container">
         <form onSubmit={handleLogin} className="login-form">
           <h2 className="login-title">🔐 학원 시스템 로그인</h2>
-          <p className="login-desc">
-            비밀번호를 입력해 주세요.
-          </p>
+          <p className="login-desc">비밀번호를 입력해 주세요.</p>
           <input
             type="password"
             placeholder="비밀번호 입력"
@@ -579,9 +579,7 @@ function App() {
             className="login-input"
             autoFocus
           />
-          <button type="submit" className="login-btn">
-            로그인
-          </button>
+          <button type="submit" className="login-btn">로그인</button>
         </form>
       </div>
     )
@@ -596,9 +594,7 @@ function App() {
             ({userRole === 'director' ? '👑 원장 모드 (전체)' : userRole === 'english' ? '📖 영어 선생님 모드' : '📐 수학 선생님 모드'})
           </span>
         </h2>
-        <button onClick={handleLogout} className="logout-btn">
-          로그아웃
-        </button>
+        <button onClick={handleLogout} className="logout-btn">로그아웃</button>
       </div>
 
       {userRole === 'director' && (
@@ -611,25 +607,17 @@ function App() {
             className="form-input name-input"
           />
           <select value={schoolLevel} onChange={(e) => setSchoolLevel(e.target.value)} className="form-select level-select">
-            {GRADE_OPTIONS.map(g => (
-              <option key={g} value={g}>{g}</option>
-            ))}
+            {GRADE_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
           </select>
           <select value={subjects} onChange={(e) => setSubjects(e.target.value)} className="form-select subject-select">
             <option value="영어+수학">영어 + 수학</option>
             <option value="영어만">영어만</option>
             <option value="수학만">수학만</option>
           </select>
-
           <select value={defaultDuration} onChange={(e) => setDefaultDuration(e.target.value)} className="form-select duration-select">
-            {DURATION_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
+            {DURATION_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
           </select>
-
-          <button type="submit" className="submit-btn">
-            등록
-          </button>
+          <button type="submit" className="submit-btn">등록</button>
         </form>
       )}
 
@@ -668,7 +656,6 @@ function App() {
           filteredStudents.map((student) => {
             const isEditing = editingId === student.id
             const cardStatus = getCardStatus(student)
-            
             const todayStats = calculateSubjectDurations(student, todayLogsData)
 
             let cardBgClass = 'card-normal'
@@ -718,9 +705,7 @@ function App() {
                         <span className={`attendance-badge ${student.attendance === '등원' ? 'status-attending' : student.attendance === '하원' ? 'status-leaving' : 'status-absent'}`}>
                           [{student.attendance || '미등원'}]
                         </span>
-                        <button onClick={() => openStudentCalendar(student)} className="calendar-open-btn">
-                          📅 달력
-                        </button>
+                        <button onClick={() => openStudentCalendar(student)} className="calendar-open-btn">📅 달력</button>
                       </div>
 
                       <div className="card-actions">
