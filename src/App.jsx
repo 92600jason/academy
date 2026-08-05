@@ -2,21 +2,18 @@ import { useEffect, useState } from 'react'
 import { supabase } from './supabaseClient'
 import './App.css'
 
-// 학년 선택 목록
 const GRADE_OPTIONS = [
   '초1', '초2', '초3', '초4', '초5', '초6',
   '중1', '중2', '중3',
   '고1', '고2', '고3'
 ]
 
-// 학년 정렬 우선순위
 const GRADE_ORDER = {
   '초1': 1, '초2': 2, '초3': 3, '초4': 4, '초5': 5, '초6': 6,
   '중1': 7, '중2': 8, '중3': 9,
   '고1': 10, '고2': 11, '고3': 12
 }
 
-// 선택 가능한 수업 시간 옵션 (분 단위)
 const DURATION_OPTIONS = [
   { label: '30분', value: 30 },
   { label: '45분', value: 45 },
@@ -28,44 +25,43 @@ const DURATION_OPTIONS = [
 ]
 
 function App() {
+  const [userRole, setUserRole] = useState(null)
+  const [passwordInput, setPasswordInput] = useState('')
+
   const [students, setStudents] = useState([])
   const [newName, setNewName] = useState('')
   const [schoolLevel, setSchoolLevel] = useState('초1')
   const [subjects, setSubjects] = useState('영어+수학')
   const [defaultDuration, setDefaultDuration] = useState(60)
 
-  // 수정 상태
   const [editingId, setEditingId] = useState(null)
   const [editName, setEditName] = useState('')
   const [editSchoolLevel, setEditSchoolLevel] = useState('초1')
   const [editSubjects, setEditSubjects] = useState('영어+수학')
   const [editDefaultDuration, setEditDefaultDuration] = useState(60)
 
-  // 필터 및 검색
   const [filter, setFilter] = useState('전체')
   const [searchQuery, setSearchQuery] = useState('')
   
   const [now, setNow] = useState(new Date())
 
-  // 캘린더 모달 및 실시간 과목별 누적 시간 데이터
   const [selectedStudent, setSelectedStudent] = useState(null)
   const [studentLogs, setStudentLogs] = useState([])
   const [calendarDate, setCalendarDate] = useState(new Date())
   const [allLogsMap, setAllLogsMap] = useState({})
 
   useEffect(() => {
+    if (!userRole) return
+
     fetchStudents()
 
-    // 1초마다 현재 시간을 갱신하여 화면의 타이머 및 누적 시간이 실시간으로 흐르게 함
     const timer = setInterval(() => setNow(new Date()), 1000)
 
-    // 사용자가 브라우저 탭을 다시 볼 때 자동으로 최신 데이터 동기화
     const handleFocus = () => {
       fetchStudents()
     }
     window.addEventListener('focus', handleFocus)
 
-    // Supabase 실시간 구독 (students 및 attendance_logs 테이블 모두 감지)
     const studentChannel = supabase
       .channel('schema-db-changes')
       .on(
@@ -90,12 +86,33 @@ function App() {
       supabase.removeChannel(studentChannel)
       supabase.removeChannel(logChannel)
     }
-  }, [])
+  }, [userRole])
+
+  function handleLogin(e) {
+    e.preventDefault()
+    if (passwordInput === '1234') { 
+      setUserRole('director')
+    } else if (passwordInput === '1111') {
+      setUserRole('english')
+    } else if (passwordInput === '2222') {
+      setUserRole('math')
+    } else {
+      alert('비밀번호가 틀렸습니다.\n(원장:1234 / 영어:1111 / 수학:2222)')
+    }
+    setPasswordInput('')
+  }
 
   async function fetchStudents() {
     const { data, error } = await supabase.from('students').select().order('id', { ascending: true })
     if (!error) {
-      const studentList = data || []
+      let studentList = data || []
+
+      if (userRole === 'english') {
+        studentList = studentList.filter(s => (s.subjects || '').includes('영어'))
+      } else if (userRole === 'math') {
+        studentList = studentList.filter(s => (s.subjects || '').includes('수학'))
+      }
+
       setStudents(studentList)
       fetchAllLogsForToday(studentList)
     }
@@ -121,7 +138,7 @@ function App() {
       const nowObj = new Date()
       const timeStr = nowObj.toLocaleString('ko-KR')
       const isoStr = nowObj.toISOString()
-      await supabase.from('attendance_logs').insert([
+      await supabase.from('attendance_logs'].insert([
         { 
           student_name: studentName, 
           subject: subject, 
@@ -226,7 +243,7 @@ function App() {
 
   async function handleCheckIn(student, subject) {
     const current = new Date()
-    const minutesToAdd = student.default_duration || (student.school_level?.startsWith('초') ? 60 : 90)
+    const minutesToAdd = student.default_duration || 60
     const endTimeObj = new Date(current.getTime() + minutesToAdd * 60000)
 
     const startTimeStr = current.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
@@ -427,7 +444,7 @@ function App() {
     const days = []
 
     for (let i = 0; i < firstDay; i++) {
-      days.push(<div key={`empty-${i}`} style={{ padding: '12px', backgroundColor: '#fafafa', border: '1px solid #eee' }} />)
+      days.push(<div key={`empty-${i}`} className="calendar-empty" />)
     }
 
     for (let day = 1; day <= daysInMonth; day++) {
@@ -438,13 +455,13 @@ function App() {
       const totalMins = hasData ? (info.english + info.math) : 0
 
       days.push(
-        <div key={day} style={{ minHeight: '85px', padding: '6px', border: '1px solid #e0e0e0', backgroundColor: hasData ? '#e8f5e9' : '#fff', borderRadius: '6px' }}>
-          <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#333' }}>{day}</div>
+        <div key={day} className={`calendar-day ${hasData ? 'has-data' : ''}`}>
+          <div className="calendar-day-number">{day}</div>
           {hasData ? (
-            <div style={{ fontSize: '13px', marginTop: '4px', lineHeight: '1.4' }}>
-              <div style={{ color: '#1b5e20', fontWeight: 'bold' }}>총: {formatMinutes(totalMins)}</div>
-              {info.english > 0 && <div style={{ color: '#2e7d32' }}>영: {formatMinutes(info.english)}</div>}
-              {info.math > 0 && <div style={{ color: '#1565c0' }}>수: {formatMinutes(info.math)}</div>}
+            <div className="calendar-day-info">
+              <div className="calendar-total">총: {formatMinutes(totalMins)}</div>
+              {info.english > 0 && <div className="calendar-eng">영: {formatMinutes(info.english)}</div>}
+              {info.math > 0 && <div className="calendar-math">수: {formatMinutes(info.math)}</div>}
             </div>
           ) : null}
         </div>
@@ -454,51 +471,85 @@ function App() {
     return days
   }
 
-  return (
-    <div style={{ padding: '16px', fontFamily: 'sans-serif', maxWidth: '1200px', margin: '0 auto', fontSize: '16px' }}>
-      <h2 style={{ margin: '0 0 16px 0', fontSize: '24px' }}>📚 학원 출석 및 과목별 학습 시간 시스템</h2>
+  // 🔥 핵심: userRole이 없을 때는 무조건 로그인 화면만 렌더링되도록 처리
+  if (!userRole) {
+    return (
+      <div className="login-container">
+        <form onSubmit={handleLogin} className="login-form">
+          <h2 className="login-title">🔐 학원 시스템 로그인</h2>
+          <p className="login-desc">
+            비밀번호를 입력해 주세요.<br/>
+            (원장: 1234 / 영어: 1111 / 수학: 2222)
+          </p>
+          <input
+            type="password"
+            placeholder="비밀번호 입력"
+            value={passwordInput}
+            onChange={(e) => setPasswordInput(e.target.value)}
+            className="login-input"
+            autoFocus
+          />
+          <button type="submit" className="login-btn">
+            로그인
+          </button>
+        </form>
+      </div>
+    )
+  }
 
-      {/* 등록 폼 */}
-      <form onSubmit={addStudent} style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '16px', padding: '14px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
+  return (
+    <div className="app-container">
+      <div className="app-header">
+        <h2 className="app-title">
+          📚 학원 출석 및 학습 시간 시스템 
+          <span className="app-role-badge">
+            ({userRole === 'director' ? '👑 원장 모드 (전체)' : userRole === 'english' ? '📖 영어 선생님 모드' : '📐 수학 선생님 모드'})
+          </span>
+        </h2>
+        <button onClick={() => setUserRole(null)} className="logout-btn">
+          로그아웃
+        </button>
+      </div>
+
+      <form onSubmit={addStudent} className="register-form">
         <input
           type="text"
           placeholder="학생 이름"
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
-          style={{ flex: '2 1 150px', padding: '10px 14px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '16px' }}
+          className="form-input name-input"
         />
-        <select value={schoolLevel} onChange={(e) => setSchoolLevel(e.target.value)} style={{ flex: '1 1 100px', padding: '10px 14px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '16px' }}>
+        <select value={schoolLevel} onChange={(e) => setSchoolLevel(e.target.value)} className="form-select level-select">
           {GRADE_OPTIONS.map(g => (
             <option key={g} value={g}>{g}</option>
           ))}
         </select>
-        <select value={subjects} onChange={(e) => setSubjects(e.target.value)} style={{ flex: '1 1 120px', padding: '10px 14px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '16px' }}>
+        <select value={subjects} onChange={(e) => setSubjects(e.target.value)} className="form-select subject-select">
           <option value="영어+수학">영어 + 수학</option>
           <option value="영어">영어만</option>
           <option value="수학">수학만</option>
         </select>
 
-        <select value={defaultDuration} onChange={(e) => setDefaultDuration(e.target.value)} style={{ flex: '1 1 130px', padding: '10px 14px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '16px' }}>
+        <select value={defaultDuration} onChange={(e) => setDefaultDuration(e.target.value)} className="form-select duration-select">
           {DURATION_OPTIONS.map(opt => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}
         </select>
 
-        <button type="submit" style={{ padding: '10px 24px', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '16px' }}>
+        <button type="submit" className="submit-btn">
           등록
         </button>
       </form>
 
-      {/* 검색 및 필터 */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+      <div className="search-filter-container">
         <input
           type="text"
           placeholder="🔍 학생 이름 검색..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          style={{ padding: '10px 14px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '16px' }}
+          className="search-input"
         />
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        <div className="filter-tabs">
           {['전체', '등원', '하원', '미등원', '초등', '중등', '고등'].map((tab) => {
             let countText = ''
             if (tab === '등원') countText = `(${students.filter(s => s.attendance === '등원').length})`
@@ -509,16 +560,7 @@ function App() {
               <button
                 key={tab}
                 onClick={() => setFilter(tab)}
-                style={{
-                  padding: '8px 18px',
-                  borderRadius: '18px',
-                  border: '1px solid #ccc',
-                  backgroundColor: filter === tab ? '#1976d2' : '#fff',
-                  color: filter === tab ? '#fff' : '#333',
-                  cursor: 'pointer',
-                  fontSize: '15px',
-                  fontWeight: filter === tab ? 'bold' : 'normal'
-                }}
+                className={`filter-tab-btn ${filter === tab ? 'active' : ''}`}
               >
                 {tab} {countText}
               </button>
@@ -527,10 +569,9 @@ function App() {
         </div>
       </div>
 
-      {/* 학생 목록 */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div className="student-list">
         {filteredStudents.length === 0 ? (
-          <p style={{ color: '#888', textAlign: 'center', padding: '20px', fontSize: '16px' }}>해당하는 학생이 없습니다.</p>
+          <p className="no-students">해당하는 학생이 없습니다.</p>
         ) : (
           filteredStudents.map((student) => {
             const isEditing = editingId === student.id
@@ -538,115 +579,87 @@ function App() {
             
             const todayStats = allLogsMap[student.name] || { english: 0, math: 0, total: 0 }
 
-            let bgColor = '#ffffff'
-            if (cardStatus === 'next_subject') bgColor = '#fff3e0'
-            if (cardStatus === 'finished') bgColor = '#ffebee'
+            let cardBgClass = 'card-normal'
+            if (cardStatus === 'next_subject') cardBgClass = 'card-next-subject'
+            if (cardStatus === 'finished') cardBgClass = 'card-finished'
 
             const userSubjects = student.subjects || '영어+수학'
             const nextSubject = student.current_subject === '영어' ? '수학' : '영어'
 
             return (
-              <div 
-                key={student.id} 
-                style={{ 
-                  padding: '14px 16px',
-                  borderRadius: '10px',
-                  border: '1px solid #d0d0d0',
-                  backgroundColor: bgColor,
-                  fontSize: '15px',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-                }}
-              >
+              <div key={student.id} className={`student-card ${cardBgClass}`}>
                 {isEditing ? (
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', padding: '8px', backgroundColor: '#f9f9f9', borderRadius: '6px' }}>
+                  <div className="edit-form">
                     <input
                       type="text"
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
-                      style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ccc', width: '110px', fontSize: '15px' }}
+                      className="edit-name-input"
                     />
-                    <select value={editSchoolLevel} onChange={(e) => setEditSchoolLevel(e.target.value)} style={{ padding: '8px', fontSize: '15px' }}>
+                    <select value={editSchoolLevel} onChange={(e) => setEditSchoolLevel(e.target.value)} className="edit-select">
                       {GRADE_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
                     </select>
-                    <select value={editSubjects} onChange={(e) => setEditSubjects(e.target.value)} style={{ padding: '8px', fontSize: '15px' }}>
+                    <select value={editSubjects} onChange={(e) => setEditSubjects(e.target.value)} className="edit-select">
                       <option value="영어+수학">영어+수학</option>
                       <option value="영어">영어만</option>
                       <option value="수학">수학만</option>
                     </select>
-                    <select value={editDefaultDuration} onChange={(e) => setEditDefaultDuration(e.target.value)} style={{ padding: '8px', fontSize: '15px' }}>
+                    <select value={editDefaultDuration} onChange={(e) => setEditDefaultDuration(e.target.value)} className="edit-select">
                       {DURATION_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                     </select>
-                    <button onClick={() => saveEdit(student)} style={{ padding: '8px 16px', backgroundColor: '#2196f3', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '15px' }}>저장</button>
-                    <button onClick={() => setEditingId(null)} style={{ padding: '8px 16px', backgroundColor: '#9e9e9e', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '15px' }}>취소</button>
+                    <button onClick={() => saveEdit(student)} className="save-btn">저장</button>
+                    <button onClick={() => setEditingId(null)} className="cancel-btn">취소</button>
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    
-                    {/* 1단: 이름, 학년/과목, 상태, 달력 버튼 및 우측 액션 버튼들 */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
-                      
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                        <strong style={{ fontSize: '19px', color: '#000000' }}>
-                          {student.name}
-                        </strong> 
-                        
-                        <span style={{ color: '#444', fontSize: '15px', fontWeight: '600' }}>
-                          ({student.school_level || '초1'} / {userSubjects})
-                        </span>
-
-                        <span style={{ 
-                          fontWeight: 'bold', 
-                          fontSize: '16px',
-                          color: student.attendance === '등원' ? '#2e7d32' : student.attendance === '하원' ? '#1565c0' : '#c62828' 
-                        }}>
+                  <div className="student-card-content">
+                    <div className="card-top-row">
+                      <div className="card-left-info">
+                        <strong className="student-name">{student.name}</strong> 
+                        <span className="student-meta">({student.school_level || '초1'} / {userSubjects})</span>
+                        <span className={`attendance-badge ${student.attendance === '등원' ? 'status-attending' : student.attendance === '하원' ? 'status-leaving' : 'status-absent'}`}>
                           [{student.attendance || '미등원'}]
                         </span>
-
-                        <button
-                          onClick={() => openStudentCalendar(student)}
-                          style={{ padding: '6px 12px', backgroundColor: '#3f51b5', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}
-                        >
+                        <button onClick={() => openStudentCalendar(student)} className="calendar-open-btn">
                           📅 달력
                         </button>
                       </div>
 
-                      {/* 우측 제어 버튼 그룹 */}
-                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                        {(userSubjects.includes('영어') || userSubjects === '영어+수학') && (
-                          <button onClick={() => handleCheckIn(student, '영어')} style={{ padding: '7px 12px', backgroundColor: student.current_subject === '영어' ? '#4caf50' : '#e0e0e0', color: student.current_subject === '영어' ? 'white' : 'black', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
+                      <div className="card-actions">
+                        {userSubjects === '영어' && (
+                          <button onClick={() => handleCheckIn(student, '영어')} className={`action-btn ${student.current_subject === '영어' ? 'btn-eng-active' : 'btn-default'}`}>
                             등원(영)
                           </button>
                         )}
-
-                        {(userSubjects.includes('수학') || userSubjects === '영어+수학') && (
-                          <button onClick={() => handleCheckIn(student, '수학')} style={{ padding: '7px 12px', backgroundColor: student.current_subject === '수학' ? '#2e7d32' : '#e0e0e0', color: student.current_subject === '수학' ? 'white' : 'black', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
+                        {userSubjects === '수학' && (
+                          <button onClick={() => handleCheckIn(student, '수학')} className={`action-btn ${student.current_subject === '수학' ? 'btn-math-active' : 'btn-default'}`}>
                             등원(수)
                           </button>
                         )}
+                        {userSubjects === '영어+수학' && (
+                          <>
+                            <button onClick={() => handleCheckIn(student, '영어')} className={`action-btn ${student.current_subject === '영어' ? 'btn-eng-active' : 'btn-default'}`}>
+                              등원(영)
+                            </button>
+                            <button onClick={() => handleCheckIn(student, '수학')} className={`action-btn ${student.current_subject === '수학' ? 'btn-math-active' : 'btn-default'}`}>
+                              등원(수)
+                            </button>
+                          </>
+                        )}
 
-                        <button onClick={() => handleStatusChange(student, '하원')} style={{ padding: '7px 12px', backgroundColor: student.attendance === '하원' ? '#2196f3' : '#e0e0e0', color: student.attendance === '하원' ? 'white' : 'black', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
+                        <button onClick={() => handleStatusChange(student, '하원')} className={`action-btn ${student.attendance === '하원' ? 'btn-leave-active' : 'btn-default'}`}>
                           하원
                         </button>
-
-                        <button onClick={() => handleStatusChange(student, '미등원')} style={{ padding: '7px 12px', backgroundColor: student.attendance === '미등원' ? '#f44336' : '#e0e0e0', color: student.attendance === '미등원' ? 'white' : 'black', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
+                        <button onClick={() => handleStatusChange(student, '미등원')} className={`action-btn ${student.attendance === '미등원' ? 'btn-absent-active' : 'btn-default'}`}>
                           미등원
                         </button>
-
-                        <button onClick={() => startEdit(student)} style={{ padding: '7px 10px', backgroundColor: '#757575', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px' }}>
-                          수정
-                        </button>
-                        <button onClick={() => deleteStudent(student.id, student.name)} style={{ padding: '7px 10px', backgroundColor: '#ff9800', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px' }}>
-                          삭제
-                        </button>
+                        <button onClick={() => startEdit(student)} className="utility-btn btn-edit">수정</button>
+                        <button onClick={() => deleteStudent(student.id, student.name)} className="utility-btn btn-delete">삭제</button>
                       </div>
-
                     </div>
 
-                    {/* 2단: 시간 정보 및 실시간 누적 시간 */}
                     {student.attendance === '등원' && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', padding: '8px 12px', backgroundColor: '#fdfdfd', borderRadius: '6px', border: '1px solid #e8e8e8' }}>
-                        <span style={{ color: '#2e7d32', fontWeight: 'bold', fontSize: '16px' }}>⏱️ {student.end_time}</span>
-                        
+                      <div className="attending-details">
+                        <span className="end-time-text">⏱️ {student.end_time}</span>
                         <select 
                           onChange={(e) => {
                             const val = Number(e.target.value)
@@ -654,8 +667,7 @@ function App() {
                             e.target.value = 0
                           }}
                           defaultValue={0}
-                          title="늦게 눌러서 시간 보정하기"
-                          style={{ padding: '6px 8px', fontSize: '14px', color: '#c62828', cursor: 'pointer', border: '1px solid #ccc', borderRadius: '4px', fontWeight: 'bold' }}
+                          className="time-adjust-select"
                         >
                           <option value={0} disabled>⏰ 늦게 눌렀나요?</option>
                           <option value={5}>5분 전</option>
@@ -665,21 +677,17 @@ function App() {
                           <option value={30}>30분 전</option>
                           <option value={60}>60분 전</option>
                         </select>
-                        
-                        <span style={{ backgroundColor: '#e8f5e9', color: '#2e7d32', padding: '4px 8px', borderRadius: '4px', fontWeight: 'bold', fontSize: '15px' }}>
+                        <span className="today-total-badge">
                           오늘 총: {formatMinutes(todayStats.total)}
                         </span>
-                        <span style={{ color: '#2e7d32', fontWeight: 'bold', fontSize: '15px' }}>(영: {formatMinutes(todayStats.english)} / 수: {formatMinutes(todayStats.math)})</span>
+                        <span className="subject-breakdown">(영: {formatMinutes(todayStats.english)} / 수: {formatMinutes(todayStats.math)})</span>
 
                         {cardStatus === 'finished' && (
-                          <span style={{ color: '#c62828', fontWeight: 'bold', fontSize: '15px' }}>[⏰ 목표완료]</span>
+                          <span className="finished-text">[⏰ 목표완료]</span>
                         )}
 
                         {cardStatus === 'next_subject' && (
-                          <button 
-                            onClick={() => handleCheckIn(student, nextSubject)}
-                            style={{ padding: '6px 12px', backgroundColor: '#e65100', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}
-                          >
+                          <button onClick={() => handleCheckIn(student, nextSubject)} className="switch-subject-btn">
                             👉 [{nextSubject}] 전환
                           </button>
                         )}
@@ -687,13 +695,12 @@ function App() {
                     )}
 
                     {student.attendance !== '등원' && todayStats.total > 0 && (
-                      <div style={{ padding: '6px 10px', backgroundColor: '#fdfdfd', borderRadius: '6px', border: '1px solid #e8e8e8', color: '#333', fontSize: '15px' }}>
-                        <span style={{ fontWeight: 'bold' }}>오늘 누적: 총 {formatMinutes(todayStats.total)}</span> 
-                        <span style={{ color: '#2e7d32', fontWeight: 'bold' }}> (영어: {formatMinutes(todayStats.english)}</span>, 
-                        <span style={{ color: '#1565c0', fontWeight: 'bold' }}> 수학: {formatMinutes(todayStats.math)})</span>
+                      <div className="non-attending-summary">
+                        <span className="summary-total">오늘 누적: 총 {formatMinutes(todayStats.total)}</span> 
+                        <span className="summary-eng"> (영어: {formatMinutes(todayStats.english)}</span>, 
+                        <span className="summary-math"> 수학: {formatMinutes(todayStats.math)})</span>
                       </div>
                     )}
-
                   </div>
                 )}
               </div>
@@ -703,61 +710,34 @@ function App() {
       </div>
 
       {selectedStudent && (
-        <div style={{
-          position: 'fixed',
-          top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 1000
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            padding: '24px',
-            borderRadius: '10px',
-            maxWidth: '650px',
-            width: '92%',
-            maxHeight: '90vh',
-            overflowY: 'auto'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, fontSize: '20px' }}>📊 {selectedStudent.name} 학생 학습 달력</h3>
-              <button 
-                onClick={() => setSelectedStudent(null)}
-                style={{ backgroundColor: '#f44336', color: 'white', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold' }}
-              >
-                닫기
-              </button>
+        <div className="modal-backdrop">
+          <div className="modal-box">
+            <div className="modal-header">
+              <h3 className="modal-title">📊 {selectedStudent.name} 학생 학습 달력</h3>
+              <button onClick={() => setSelectedStudent(null)} className="modal-close-btn">닫기</button>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <button 
-                onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))}
-                style={{ padding: '8px 14px', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold' }}
-              >
+            <div className="modal-nav-row">
+              <button onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))} className="modal-nav-btn">
                 ◀ 이전달
               </button>
-              <strong style={{ fontSize: '18px' }}>{calendarDate.getFullYear()}년 {calendarDate.getMonth() + 1}월</strong>
-              <button 
-                onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))}
-                style={{ padding: '8px 14px', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold' }}
-              >
+              <strong className="modal-current-month">{calendarDate.getFullYear()}년 {calendarDate.getMonth() + 1}월</strong>
+              <button onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))} className="modal-nav-btn">
                 다음달 ▶
               </button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', textAlign: 'center', fontWeight: 'bold', fontSize: '15px', marginBottom: '8px' }}>
-              <div style={{ color: 'red' }}>일</div>
+            <div className="calendar-header-grid">
+              <div className="day-sun">일</div>
               <div>월</div>
               <div>화</div>
               <div>수</div>
               <div>목</div>
               <div>금</div>
-              <div style={{ color: 'blue' }}>토</div>
+              <div className="day-sat">토</div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px' }}>
+            <div className="calendar-grid">
               {renderCalendar()}
             </div>
           </div>
