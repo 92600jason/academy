@@ -45,7 +45,19 @@ function App() {
   const [filter, setFilter] = useState('전체')
   const [searchQuery, setSearchQuery] = useState('')
   
-  const [now, setNow] = useState(new Date())
+  // 💡 [핵심 수정] 타이머를 강제로 작동시키기 위한 독립적인 틱(tick) 상태 추가
+  const [tick, setTick] = useState(0)
+  // 매 렌더링마다 현재 시간을 새로 계산합니다.
+  const now = new Date()
+
+  // 💡 [핵심 수정] 다른 어떤 데이터 통신과도 엮이지 않은 완벽히 독립된 타이머
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTick(prev => prev + 1) // 1초마다 무조건 상태를 변경하여 화면을 새로고침함
+    }, 1000)
+    
+    return () => clearInterval(timer)
+  }, [])
 
   const [selectedStudent, setSelectedStudent] = useState(null)
   const [studentLogs, setStudentLogs] = useState([])
@@ -57,11 +69,6 @@ function App() {
 
     fetchStudents()
     fetchLogsForTodayOnly()
-
-    // 💡 함수형 업데이트(prev => new Date())를 사용하여 타이머가 멈추지 않고 매초 작동하도록 수정
-    const timer = setInterval(() => {
-      setNow(new Date())
-    }, 1000)
 
     const handleFocus = () => {
       fetchStudents()
@@ -91,7 +98,6 @@ function App() {
       .subscribe()
 
     return () => {
-      clearInterval(timer)
       window.removeEventListener('focus', handleFocus)
       supabase.removeChannel(studentChannel)
       supabase.removeChannel(logChannel)
