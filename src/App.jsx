@@ -25,7 +25,6 @@ const DURATION_OPTIONS = [
 ]
 
 function App() {
-  // 🔥 새로고침해도 로그인 상태가 유지되도록 로컬스토리지 연동
   const [userRole, setUserRole] = useState(() => {
     return localStorage.getItem('academy_user_role') || null
   })
@@ -115,14 +114,7 @@ function App() {
   async function fetchStudents() {
     const { data, error } = await supabase.from('students').select().order('id', { ascending: true })
     if (!error) {
-      let studentList = data || []
-
-      if (userRole === 'english') {
-        studentList = studentList.filter(s => (s.subjects || '').includes('영어'))
-      } else if (userRole === 'math') {
-        studentList = studentList.filter(s => (s.subjects || '').includes('수학'))
-      }
-
+      const studentList = data || []
       setStudents(studentList)
       fetchAllLogsForToday(studentList)
     }
@@ -195,10 +187,14 @@ function App() {
 
     const newDuration = Number(editDefaultDuration)
     const updateData = {
-      name: editName,
-      school_level: editSchoolLevel,
-      subjects: editSubjects,
       default_duration: newDuration
+    }
+
+    // 원장님만 이름, 학년, 과목 구성을 수정할 수 있음
+    if (userRole === 'director') {
+      updateData.name = editName
+      updateData.school_level = editSchoolLevel
+      updateData.subjects = editSubjects
     }
 
     if (student.attendance === '등원') {
@@ -246,6 +242,10 @@ function App() {
   }
 
   async function deleteStudent(id, name) {
+    if (userRole !== 'director') {
+      alert('삭제 권한은 원장님에게만 있습니다.')
+      return
+    }
     if (!window.confirm(`${name} 학생을 정말 삭제하시겠습니까?`)) return
     const { error } = await supabase.from('students').delete().eq('id', id)
     if (!error) fetchStudents()
@@ -259,6 +259,12 @@ function App() {
     const startTimeStr = current.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
     const endTimeStr = endTimeObj.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
 
+    const isSwitching = student.attendance === '등원' && student.current_subject && student.current_subject !== subject
+
+    if (isSwitching) {
+      await logAttendance(student.name, student.current_subject, `${student.current_subject} 종료`)
+    }
+
     await supabase.from('students').update({ 
       attendance: '등원',
       current_subject: subject,
@@ -268,7 +274,8 @@ function App() {
       target_minutes: minutesToAdd                     
     }).eq('id', student.id)
 
-    await logAttendance(student.name, subject, student.attendance === '등원' ? `${subject} 전환` : '등원')
+    const logStatus = student.attendance === '등원' ? `${subject} 전환` : '등원'
+    await logAttendance(student.name, subject, logStatus)
     fetchStudents()
   }
 
@@ -325,7 +332,7 @@ function App() {
         }
         currentSubject = log.subject
         startTime = logDate
-      } else if (log.status === '하원' || log.status === '미등원') {
+      } else if (log.status === '하원' || log.status === '미등원' || log.status.includes('종료')) {
         if (currentSubject && startTime) {
           const durationMins = Math.floor((logDate.getTime() - startTime.getTime()) / (1000 * 60))
           if (durationMins > 0 && durationMins < 600) {
@@ -374,7 +381,25 @@ function App() {
     return `${h}시간 ${m}분`
   }
 
-  const filteredStudents = students
+  // 👑 선생님 모드별 과목 필터링 적용 (원장: 전부, 영어쌤: 영어 관련, 수학쌤: 수학 관련)
+  const roleFilteredStudents = students.filter(student => {
+    const userSubjects = student.subjects || '영어+수학'
+    if (userRole === 'english') {
+      // 영어쌤 화면: 영어가 포함되어 있으면서, 현재 수학 수업 중(등원 상태에서 current_subject가 수학)이 아닌 학생들만 표시
+      const isEnglishIncluded = userSubjects.includes('영어')
+      const isCurrentlyMath = student.attendance === '등원' && student.current_subject === '수학'
+      return isEnglishIncluded && !isCurrentlyMath
+    }
+    if (userRole === 'math') {
+      // 수학쌤 화면: 수학이 포함되어 있으면서, 현재 영어 수업 중(등원 상태에서 current_subject가 영어)이 아닌 학생들만 표시
+      const isMathIncluded = userSubjects.includes('수학')
+      const isCurrentlyEnglish = student.attendance === '등원' && student.current_subject === '영어'
+      return isMathIncluded && !isCurrentlyEnglish
+    }
+    return true // 원장님은 전체 보기
+  })
+
+  const filteredStudents = roleFilteredStudents
     .filter(student => {
       if (searchQuery && !student.name.includes(searchQuery)) return false
       
@@ -427,7 +452,7 @@ function App() {
         }
         currentSubject = log.subject
         startTime = logDate
-      } else if (log.status === '하원' || log.status === '미등원') {
+      } else if (log.status === '하원' || log.status === '미등원' || log.status.includes('종료')) {
         if (currentSubject && startTime) {
           const durationMins = Math.floor((logDate.getTime() - startTime.getTime()) / (1000 * 60))
           if (durationMins > 0) {
@@ -520,35 +545,37 @@ function App() {
         </button>
       </div>
 
-      <form onSubmit={addStudent} className="register-form">
-        <input
-          type="text"
-          placeholder="학생 이름"
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          className="form-input name-input"
-        />
-        <select value={schoolLevel} onChange={(e) => setSchoolLevel(e.target.value)} className="form-select level-select">
-          {GRADE_OPTIONS.map(g => (
-            <option key={g} value={g}>{g}</option>
-          ))}
-        </select>
-        <select value={subjects} onChange={(e) => setSubjects(e.target.value)} className="form-select subject-select">
-          <option value="영어+수학">영어 + 수학</option>
-          <option value="영어">영어만</option>
-          <option value="수학">수학만</option>
-        </select>
+      {userRole === 'director' && (
+        <form onSubmit={addStudent} className="register-form">
+          <input
+            type="text"
+            placeholder="학생 이름"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            className="form-input name-input"
+          />
+          <select value={schoolLevel} onChange={(e) => setSchoolLevel(e.target.value)} className="form-select level-select">
+            {GRADE_OPTIONS.map(g => (
+              <option key={g} value={g}>{g}</option>
+            ))}
+          </select>
+          <select value={subjects} onChange={(e) => setSubjects(e.target.value)} className="form-select subject-select">
+            <option value="영어+수학">영어 + 수학</option>
+            <option value="영어">영어만</option>
+            <option value="수학">수학만</option>
+          </select>
 
-        <select value={defaultDuration} onChange={(e) => setDefaultDuration(e.target.value)} className="form-select duration-select">
-          {DURATION_OPTIONS.map(opt => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
+          <select value={defaultDuration} onChange={(e) => setDefaultDuration(e.target.value)} className="form-select duration-select">
+            {DURATION_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
 
-        <button type="submit" className="submit-btn">
-          등록
-        </button>
-      </form>
+          <button type="submit" className="submit-btn">
+            등록
+          </button>
+        </form>
+      )}
 
       <div className="search-filter-container">
         <input
@@ -561,9 +588,9 @@ function App() {
         <div className="filter-tabs">
           {['전체', '등원', '하원', '미등원', '초등', '중등', '고등'].map((tab) => {
             let countText = ''
-            if (tab === '등원') countText = `(${students.filter(s => s.attendance === '등원').length})`
-            if (tab === '하원') countText = `(${students.filter(s => s.attendance === '하원').length})`
-            if (tab === '미등원') countText = `(${students.filter(s => s.attendance === '미등원' || !s.attendance).length})`
+            if (tab === '등원') countText = `(${roleFilteredStudents.filter(s => s.attendance === '등원').length})`
+            if (tab === '하원') countText = `(${roleFilteredStudents.filter(s => s.attendance === '하원').length})`
+            if (tab === '미등원') countText = `(${roleFilteredStudents.filter(s => s.attendance === '미등원' || !s.attendance).length})`
 
             return (
               <button
@@ -599,20 +626,28 @@ function App() {
               <div key={student.id} className={`student-card ${cardBgClass}`}>
                 {isEditing ? (
                   <div className="edit-form">
-                    <input
-                      type="text"
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      className="edit-name-input"
-                    />
-                    <select value={editSchoolLevel} onChange={(e) => setEditSchoolLevel(e.target.value)} className="edit-select">
-                      {GRADE_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
-                    </select>
-                    <select value={editSubjects} onChange={(e) => setEditSubjects(e.target.value)} className="edit-select">
-                      <option value="영어+수학">영어+수학</option>
-                      <option value="영어">영어만</option>
-                      <option value="수학">수학만</option>
-                    </select>
+                    {/* 원장님만 이름, 학년, 과목 수정 가능 / 선생님은 시간 설정만 가능 */}
+                    {userRole === 'director' ? (
+                      <>
+                        <input
+                          type="text"
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          className="edit-name-input"
+                        />
+                        <select value={editSchoolLevel} onChange={(e) => setEditSchoolLevel(e.target.value)} className="edit-select">
+                          {GRADE_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
+                        </select>
+                        <select value={editSubjects} onChange={(e) => setEditSubjects(e.target.value)} className="edit-select">
+                          <option value="영어+수학">영어+수학</option>
+                          <option value="영어">영어만</option>
+                          <option value="수학">수학만</option>
+                        </select>
+                      </>
+                    ) : (
+                      <span className="edit-notice-text">⏰ 기본 수업 시간 수정</span>
+                    )}
+
                     <select value={editDefaultDuration} onChange={(e) => setEditDefaultDuration(e.target.value)} className="edit-select">
                       {DURATION_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                     </select>
@@ -634,25 +669,15 @@ function App() {
                       </div>
 
                       <div className="card-actions">
-                        {userSubjects === '영어' && (
+                        {(userRole === 'director' || userRole === 'english') && (userSubjects === '영어' || userSubjects === '영어+수학') && (
                           <button onClick={() => handleCheckIn(student, '영어')} className={`action-btn ${student.current_subject === '영어' ? 'btn-eng-active' : 'btn-default'}`}>
                             등원(영)
                           </button>
                         )}
-                        {userSubjects === '수학' && (
+                        {(userRole === 'director' || userRole === 'math') && (userSubjects === '수학' || userSubjects === '영어+수학') && (
                           <button onClick={() => handleCheckIn(student, '수학')} className={`action-btn ${student.current_subject === '수학' ? 'btn-math-active' : 'btn-default'}`}>
                             등원(수)
                           </button>
-                        )}
-                        {userSubjects === '영어+수학' && (
-                          <>
-                            <button onClick={() => handleCheckIn(student, '영어')} className={`action-btn ${student.current_subject === '영어' ? 'btn-eng-active' : 'btn-default'}`}>
-                              등원(영)
-                            </button>
-                            <button onClick={() => handleCheckIn(student, '수학')} className={`action-btn ${student.current_subject === '수학' ? 'btn-math-active' : 'btn-default'}`}>
-                              등원(수)
-                            </button>
-                          </>
                         )}
 
                         <button onClick={() => handleStatusChange(student, '하원')} className={`action-btn ${student.attendance === '하원' ? 'btn-leave-active' : 'btn-default'}`}>
@@ -662,7 +687,9 @@ function App() {
                           미등원
                         </button>
                         <button onClick={() => startEdit(student)} className="utility-btn btn-edit">수정</button>
-                        <button onClick={() => deleteStudent(student.id, student.name)} className="utility-btn btn-delete">삭제</button>
+                        {userRole === 'director' && (
+                          <button onClick={() => deleteStudent(student.id, student.name)} className="utility-btn btn-delete">삭제</button>
+                        )}
                       </div>
                     </div>
 
