@@ -507,8 +507,8 @@ function App() {
         </div>
       </div>
 
-      {/* 학생 목록 */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      {/* 학생 목록 (위아래 2단 구조로 변경하여 잘림 방지) */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {filteredStudents.length === 0 ? (
           <p style={{ color: '#888', textAlign: 'center', padding: '20px', fontSize: '16px' }}>해당하는 학생이 없습니다.</p>
         ) : (
@@ -529,11 +529,12 @@ function App() {
               <div 
                 key={student.id} 
                 style={{ 
-                  padding: '12px 14px',
-                  borderRadius: '8px',
-                  border: '1px solid #e0e0e0',
+                  padding: '14px 16px',
+                  borderRadius: '10px',
+                  border: '1px solid #d0d0d0',
                   backgroundColor: bgColor,
-                  fontSize: '15px'
+                  fontSize: '15px',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
                 }}
               >
                 {isEditing ? (
@@ -559,120 +560,120 @@ function App() {
                     <button onClick={() => setEditingId(null)} style={{ padding: '8px 16px', backgroundColor: '#9e9e9e', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '15px' }}>취소</button>
                   </div>
                 ) : (
-                  <div className="student-card-inner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     
-                    <div className="student-info-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '300px', flexShrink: 0 }}>
-                      {/* 학생 이름 검정색 및 폰트 크기 확대 */}
-                      <strong style={{ fontSize: '18px', color: '#000000', width: '85px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {student.name}
-                      </strong> 
+                    {/* 1단: 이름, 학년/과목, 상태, 달력 버튼 및 우측 액션 버튼들 */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
                       
-                      <span style={{ color: '#444', width: '90px', whiteSpace: 'nowrap', fontSize: '14px', fontWeight: '500' }}>
-                        ({student.school_level || '초1'}/{userSubjects})
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                        {/* 학생 이름 검정색, 폰트 큼직하게 */}
+                        <strong style={{ fontSize: '19px', color: '#000000' }}>
+                          {student.name}
+                        </strong> 
+                        
+                        <span style={{ color: '#444', fontSize: '15px', fontWeight: '600' }}>
+                          ({student.school_level || '초1'} / {userSubjects})
+                        </span>
 
-                      <span style={{ 
-                        fontWeight: 'bold', 
-                        width: '55px',
-                        whiteSpace: 'nowrap',
-                        fontSize: '15px',
-                        color: student.attendance === '등원' ? '#2e7d32' : student.attendance === '하원' ? '#1565c0' : '#c62828' 
-                      }}>
-                        [{student.attendance || '미등원'}]
-                      </span>
+                        <span style={{ 
+                          fontWeight: 'bold', 
+                          fontSize: '16px',
+                          color: student.attendance === '등원' ? '#2e7d32' : student.attendance === '하원' ? '#1565c0' : '#c62828' 
+                        }}>
+                          [{student.attendance || '미등원'}]
+                        </span>
 
-                      <button
-                        onClick={() => openStudentCalendar(student)}
-                        style={{ padding: '6px 10px', backgroundColor: '#3f51b5', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', whiteSpace: 'nowrap' }}
-                      >
-                        📅 달력
-                      </button>
-                    </div>
+                        <button
+                          onClick={() => openStudentCalendar(student)}
+                          style={{ padding: '6px 12px', backgroundColor: '#3f51b5', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}
+                        >
+                          📅 달력
+                        </button>
+                      </div>
 
-                    <div style={{ flex: 1, minWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '14px' }}>
-                      {student.attendance === '등원' && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                          <span style={{ color: '#2e7d32', fontWeight: 'bold', fontSize: '15px' }}>⏱️ {student.end_time}</span>
-                          <select 
-                            onChange={(e) => {
-                              const val = Number(e.target.value)
-                              if (val > 0) adjustCheckInTime(student, val)
-                              e.target.value = 0
-                            }}
-                            defaultValue={0}
-                            title="늦게 눌러서 시간 보정하기"
-                            style={{ padding: '6px', fontSize: '13px', color: '#c62828', cursor: 'pointer', border: '1px solid #ccc', borderRadius: '4px', fontWeight: 'bold' }}
-                          >
-                            <option value={0} disabled>⏰ 늦게 눌렀나요?</option>
-                            <option value={5}>5분 전</option>
-                            <option value={10}>10분 전</option>
-                            <option value={15}>15분 전</option>
-                            <option value={20}>20분 전</option>
-                            <option value={30}>30분 전</option>
-                            <option value={60}>60분 전</option>
-                          </select>
-                          
-                          <span style={{ backgroundColor: '#e8f5e9', color: '#2e7d32', padding: '4px 8px', borderRadius: '4px', fontWeight: 'bold' }}>
-                            오늘 총: {formatMinutes(todayStats.total)}
-                          </span>
-                          <span style={{ color: '#2e7d32', fontWeight: 'bold' }}>(영: {formatMinutes(todayStats.english)} / 수: {formatMinutes(todayStats.math)})</span>
-
-                          {cardStatus === 'finished' && (
-                            <span style={{ color: '#c62828', fontWeight: 'bold' }}>[⏰ 목표완료]</span>
-                          )}
-
-                          {cardStatus === 'next_subject' && (
-                            <button 
-                              onClick={() => handleCheckIn(student, nextSubject)}
-                              style={{ padding: '6px 10px', backgroundColor: '#e65100', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}
-                            >
-                              👉 [{nextSubject}] 전환
-                            </button>
-                          )}
-                        </div>
-                      )}
-
-                      {student.attendance !== '등원' && todayStats.total > 0 && (
-                        <div style={{ color: '#333', fontSize: '15px' }}>
-                          <span style={{ fontWeight: 'bold' }}>오늘 누적: 총 {formatMinutes(todayStats.total)}</span> 
-                          <span style={{ color: '#2e7d32', fontWeight: 'bold' }}> (영어: {formatMinutes(todayStats.english)}</span>, 
-                          <span style={{ color: '#1565c0', fontWeight: 'bold' }}> 수학: {formatMinutes(todayStats.math)})</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="student-action-buttons" style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
-                      <div style={{ width: '75px' }}>
+                      {/* 우측 제어 버튼 그룹 */}
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
                         {(userSubjects.includes('영어') || userSubjects === '영어+수학') && (
-                          <button onClick={() => handleCheckIn(student, '영어')} style={{ width: '100%', padding: '7px 0', backgroundColor: student.current_subject === '영어' ? '#4caf50' : '#e0e0e0', color: student.current_subject === '영어' ? 'white' : 'black', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
+                          <button onClick={() => handleCheckIn(student, '영어')} style={{ padding: '7px 12px', backgroundColor: student.current_subject === '영어' ? '#4caf50' : '#e0e0e0', color: student.current_subject === '영어' ? 'white' : 'black', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
                             등원(영)
                           </button>
                         )}
-                      </div>
 
-                      <div style={{ width: '75px' }}>
                         {(userSubjects.includes('수학') || userSubjects === '영어+수학') && (
-                          <button onClick={() => handleCheckIn(student, '수학')} style={{ width: '100%', padding: '7px 0', backgroundColor: student.current_subject === '수학' ? '#2e7d32' : '#e0e0e0', color: student.current_subject === '수학' ? 'white' : 'black', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
+                          <button onClick={() => handleCheckIn(student, '수학')} style={{ padding: '7px 12px', backgroundColor: student.current_subject === '수학' ? '#2e7d32' : '#e0e0e0', color: student.current_subject === '수학' ? 'white' : 'black', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
                             등원(수)
                           </button>
                         )}
+
+                        <button onClick={() => handleStatusChange(student, '하원')} style={{ padding: '7px 12px', backgroundColor: student.attendance === '하원' ? '#2196f3' : '#e0e0e0', color: student.attendance === '하원' ? 'white' : 'black', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
+                          하원
+                        </button>
+
+                        <button onClick={() => handleStatusChange(student, '미등원')} style={{ padding: '7px 12px', backgroundColor: student.attendance === '미등원' ? '#f44336' : '#e0e0e0', color: student.attendance === '미등원' ? 'white' : 'black', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
+                          미등원
+                        </button>
+
+                        <button onClick={() => startEdit(student)} style={{ padding: '7px 10px', backgroundColor: '#757575', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px' }}>
+                          수정
+                        </button>
+                        <button onClick={() => deleteStudent(student.id, student.name)} style={{ padding: '7px 10px', backgroundColor: '#ff9800', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px' }}>
+                          삭제
+                        </button>
                       </div>
 
-                      <button onClick={() => handleStatusChange(student, '하원')} style={{ padding: '7px 12px', backgroundColor: student.attendance === '하원' ? '#2196f3' : '#e0e0e0', color: student.attendance === '하원' ? 'white' : 'black', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
-                        하원
-                      </button>
-
-                      <button onClick={() => handleStatusChange(student, '미등원')} style={{ padding: '7px 12px', backgroundColor: student.attendance === '미등원' ? '#f44336' : '#e0e0e0', color: student.attendance === '미등원' ? 'white' : 'black', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}>
-                        미등원
-                      </button>
-
-                      <button onClick={() => startEdit(student)} style={{ padding: '7px 10px', backgroundColor: '#757575', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px' }}>
-                        수정
-                      </button>
-                      <button onClick={() => deleteStudent(student.id, student.name)} style={{ padding: '7px 10px', backgroundColor: '#ff9800', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px' }}>
-                        삭제
-                      </button>
                     </div>
+
+                    {/* 2단: 같은 블록 안에서 두껍게 표시되는 시간 정보 영역 */}
+                    {student.attendance === '등원' && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', padding: '8px 12px', backgroundColor: '#fdfdfd', borderRadius: '6px', border: '1px solid #e8e8e8' }}>
+                        <span style={{ color: '#2e7d32', fontWeight: 'bold', fontSize: '16px' }}>⏱️ {student.end_time}</span>
+                        
+                        <select 
+                          onChange={(e) => {
+                            const val = Number(e.target.value)
+                            if (val > 0) adjustCheckInTime(student, val)
+                            e.target.value = 0
+                          }}
+                          defaultValue={0}
+                          title="늦게 눌러서 시간 보정하기"
+                          style={{ padding: '6px 8px', fontSize: '14px', color: '#c62828', cursor: 'pointer', border: '1px solid #ccc', borderRadius: '4px', fontWeight: 'bold' }}
+                        >
+                          <option value={0} disabled>⏰ 늦게 눌렀나요?</option>
+                          <option value={5}>5분 전</option>
+                          <option value={10}>10분 전</option>
+                          <option value={15}>15분 전</option>
+                          <option value={20}>20분 전</option>
+                          <option value={30}>30분 전</option>
+                          <option value={60}>60분 전</option>
+                        </select>
+                        
+                        <span style={{ backgroundColor: '#e8f5e9', color: '#2e7d32', padding: '4px 8px', borderRadius: '4px', fontWeight: 'bold', fontSize: '15px' }}>
+                          오늘 총: {formatMinutes(todayStats.total)}
+                        </span>
+                        <span style={{ color: '#2e7d32', fontWeight: 'bold', fontSize: '15px' }}>(영: {formatMinutes(todayStats.english)} / 수: {formatMinutes(todayStats.math)})</span>
+
+                        {cardStatus === 'finished' && (
+                          <span style={{ color: '#c62828', fontWeight: 'bold', fontSize: '15px' }}>[⏰ 목표완료]</span>
+                        )}
+
+                        {cardStatus === 'next_subject' && (
+                          <button 
+                            onClick={() => handleCheckIn(student, nextSubject)}
+                            style={{ padding: '6px 12px', backgroundColor: '#e65100', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}
+                          >
+                            👉 [{nextSubject}] 전환
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {student.attendance !== '등원' && todayStats.total > 0 && (
+                      <div style={{ padding: '6px 10px', backgroundColor: '#fdfdfd', borderRadius: '6px', border: '1px solid #e8e8e8', color: '#333', fontSize: '15px' }}>
+                        <span style={{ fontWeight: 'bold' }}>오늘 누적: 총 {formatMinutes(todayStats.total)}</span> 
+                        <span style={{ color: '#2e7d32', fontWeight: 'bold' }}> (영어: {formatMinutes(todayStats.english)}</span>, 
+                        <span style={{ color: '#1565c0', fontWeight: 'bold' }}> 수학: {formatMinutes(todayStats.math)})</span>
+                      </div>
+                    )}
 
                   </div>
                 )}
