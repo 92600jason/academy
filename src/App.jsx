@@ -56,9 +56,17 @@ function App() {
   useEffect(() => {
     fetchStudents()
 
+    // 1초마다 현재 시간을 갱신하여 화면의 타이머 및 누적 시간이 실시간으로 흐르게 함
     const timer = setInterval(() => setNow(new Date()), 1000)
 
-    const channel = supabase
+    // 사용자가 브라우저 탭을 다시 볼 때 자동으로 최신 데이터 동기화
+    const handleFocus = () => {
+      fetchStudents()
+    }
+    window.addEventListener('focus', handleFocus)
+
+    // Supabase 실시간 구독 (students 및 attendance_logs 테이블 모두 감지)
+    const studentChannel = supabase
       .channel('schema-db-changes')
       .on(
         'postgres_changes',
@@ -67,17 +75,29 @@ function App() {
       )
       .subscribe()
 
+    const logChannel = supabase
+      .channel('schema-log-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'attendance_logs' },
+        () => fetchStudents()
+      )
+      .subscribe()
+
     return () => {
       clearInterval(timer)
-      supabase.removeChannel(channel)
+      window.removeEventListener('focus', handleFocus)
+      supabase.removeChannel(studentChannel)
+      supabase.removeChannel(logChannel)
     }
   }, [])
 
   async function fetchStudents() {
     const { data, error } = await supabase.from('students').select().order('id', { ascending: true })
     if (!error) {
-      setStudents(data || [])
-      fetchAllLogsForToday(data || [])
+      const studentList = data || []
+      setStudents(studentList)
+      fetchAllLogsForToday(studentList)
     }
   }
 
@@ -507,7 +527,7 @@ function App() {
         </div>
       </div>
 
-      {/* 학생 목록 (위아래 2단 구조로 변경하여 잘림 방지) */}
+      {/* 학생 목록 */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {filteredStudents.length === 0 ? (
           <p style={{ color: '#888', textAlign: 'center', padding: '20px', fontSize: '16px' }}>해당하는 학생이 없습니다.</p>
@@ -566,7 +586,6 @@ function App() {
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
                       
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                        {/* 학생 이름 검정색, 폰트 큼직하게 */}
                         <strong style={{ fontSize: '19px', color: '#000000' }}>
                           {student.name}
                         </strong> 
@@ -623,7 +642,7 @@ function App() {
 
                     </div>
 
-                    {/* 2단: 같은 블록 안에서 두껍게 표시되는 시간 정보 영역 */}
+                    {/* 2단: 시간 정보 및 실시간 누적 시간 */}
                     {student.attendance === '등원' && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', padding: '8px 12px', backgroundColor: '#fdfdfd', borderRadius: '6px', border: '1px solid #e8e8e8' }}>
                         <span style={{ color: '#2e7d32', fontWeight: 'bold', fontSize: '16px' }}>⏱️ {student.end_time}</span>
