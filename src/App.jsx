@@ -3,14 +3,18 @@ import { supabase } from './supabaseClient'
 import './App.css'
 
 function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [userRole, setUserRole] = useState('') // 'director', 'english', 'math'
+  const [passwordInput, setPasswordInput] = useState('')
+  const [selectedRoleOption, setSelectedRoleOption] = useState('director')
+
   const [students, setStudents] = useState([])
   const [logs, setLogs] = useState([])
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
   const [activeTab, setActiveTab] = useState('all') 
-  const [userRole, setUserRole] = useState('director') 
   const [searchTerm, setSearchTerm] = useState('')
 
-  // 신규 등록 폼
+  // 신규 등록 폼 (학과 제거, 학년 추가)
   const [newName, setNewName] = useState('')
   const [newSchool, setNewSchool] = useState('')
   const [newGrade, setNewGrade] = useState('')
@@ -25,26 +29,41 @@ function App() {
   const [editParentPhone, setEditParentPhone] = useState('')
   const [editSubjects, setEditSubjects] = useState('영어+수학')
 
-  // 달력 모달
-  const [calendarStudent, setCalendarStudent] = useState(null)
-  const [studentMonthLogs, setStudentMonthLogs] = useState([])
-
   useEffect(() => {
-    fetchStudents()
-    fetchLogs(selectedDate)
+    if (isLoggedIn) {
+      fetchStudents()
+      fetchLogs(selectedDate)
 
-    const channel = supabase
-      .channel('attendance-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_logs' }, () => {
-        fetchStudents()
-        fetchLogs(selectedDate)
-      })
-      .subscribe()
+      const channel = supabase
+        .channel('attendance-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_logs' }, () => {
+          fetchStudents()
+          fetchLogs(selectedDate)
+        })
+        .subscribe()
 
-    return () => {
-      supabase.removeChannel(channel)
+      return () => {
+        supabase.removeChannel(channel)
+      }
     }
-  }, [selectedDate])
+  }, [isLoggedIn, selectedDate])
+
+  const handleLogin = (e) => {
+    e.preventDefault()
+    if (selectedRoleOption === 'director' && passwordInput === '4507') {
+      setUserRole('director')
+      setIsLoggedIn(true)
+    } else if (selectedRoleOption === 'english' && passwordInput === '0000') {
+      setUserRole('english')
+      setIsLoggedIn(true)
+    } else if (selectedRoleOption === 'math' && passwordInput === '0926') {
+      setUserRole('math')
+      setIsLoggedIn(true)
+    } else {
+      alert('비밀번호가 올바르지 않습니다.')
+    }
+    setPasswordInput('')
+  }
 
   const fetchStudents = async () => {
     const { data, error } = await supabase.from('students').select('*').order('name', { ascending: true })
@@ -68,7 +87,7 @@ function App() {
     if (!newName.trim()) return
 
     const { error } = await supabase.from('students').insert([
-      { name: newName.trim(), school: newSchool.trim(), grade: newGrade.trim(), parent_phone: newParentPhone.trim(), subjects: newSubjects }
+      { name: newName.trim(), school: newSchool.trim(), grade: newGrade.trim(), parent_phone: newParentPhone.trim(), subjects: newSubjects, status: '미등원' }
     ])
 
     if (!error) {
@@ -124,7 +143,6 @@ function App() {
     fetchStudents(); fetchLogs(selectedDate)
   }
 
-  // ⏰ 늦게 눌렀나요 시간 보정 처리
   const handleLateCheckIn = async (student, minutesAgo) => {
     const now = new Date()
     now.setMinutes(now.getMinutes() - parseInt(minutesAgo))
@@ -137,22 +155,6 @@ function App() {
     fetchStudents(); fetchLogs(selectedDate)
   }
 
-  // 📅 학생별 월별 출석 기록 불러오기
-  const openCalendarModal = async (student) => {
-    setCalendarStudent(student)
-    const yearMonth = selectedDate.substring(0, 7) // YYYY-MM
-    const { data, error } = await supabase
-      .from('attendance_logs')
-      .select('*')
-      .eq('student_id', student.id)
-      .gte('timestamp', `${yearMonth}-01T00:00:00`)
-      .lte('timestamp', `${yearMonth}-31T23:59:59`)
-      .order('timestamp', { ascending: true })
-
-    if (!error) setStudentMonthLogs(data || [])
-  }
-
-  // 학생별 당일 누적 시간 계산
   const getStudentTodayStats = (studentId) => {
     const studentLogs = logs.filter(l => l.student_id === studentId).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
     let engMin = 0
@@ -175,7 +177,6 @@ function App() {
       }
     }
 
-    // 현재 등원 중인 경우 실시간 계산
     const targetStudent = students.find(s => s.id === studentId)
     if (targetStudent?.status === '등원' && lastInTime) {
       const diffMin = Math.floor((new Date() - lastInTime) / 60000)
@@ -188,11 +189,36 @@ function App() {
     return { total: engMin + mathMin, eng: engMin, math: mathMin }
   }
 
+  if (!isLoggedIn) {
+    return (
+      <div className="login-container">
+        <div className="login-card">
+          <h2>학원 출석 시스템 로그인</h2>
+          <form onSubmit={handleLogin} className="login-form">
+            <select value={selectedRoleOption} onChange={(e) => setSelectedRoleOption(e.target.value)}>
+              <option value="director">👑 원장님</option>
+              <option value="english">🔤 영어 선생님</option>
+              <option value="math">📐 수학 선생님</option>
+            </select>
+            <input 
+              type="password" 
+              placeholder="비밀번호를 입력하세요" 
+              value={passwordInput} 
+              onChange={(e) => setPasswordInput(e.target.value)} 
+              required 
+            />
+            <button type="submit" className="btn-primary" style={{ padding: '12px' }}>로그인</button>
+          </form>
+        </div>
+      </div>
+    )
+  }
+
   const roleFilteredStudents = students.filter((student) => {
     const userSubjects = student.subjects || '영어+수학'
     let passRole = true
     if (userRole === 'english') passRole = userSubjects.includes('영어')
-    if (userRole === 'math') passRole = userSubjects.includes('수학') // 수학만 듣는 학생 완벽 지원
+    if (userRole === 'math') passRole = userSubjects.includes('수학')
 
     const passSearch = student.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                        (student.school && student.school.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -209,16 +235,10 @@ function App() {
   return (
     <div className="app-container">
       <header className="main-header">
-        <h1>학원 출석 및 과목별 학습 시간 시스템</h1>
+        <h1>학원 출석 및 과목별 학습 시간 시스템 ({userRole === 'director' ? '원장님' : userRole === 'english' ? '영어 선생님' : '수학 선생님'})</h1>
         <div className="header-controls">
-          <label className="role-selector">
-            <select value={userRole} onChange={(e) => setUserRole(e.target.value)}>
-              <option value="director">👑 원장님 (전체)</option>
-              <option value="english">🔤 영어 선생님</option>
-              <option value="math">📐 수학 선생님</option>
-            </select>
-          </label>
           <input type="date" className="date-picker" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
+          <button onClick={() => setIsLoggedIn(false)} className="btn-logout">로그아웃</button>
         </div>
       </header>
 
@@ -227,7 +247,7 @@ function App() {
           <form onSubmit={handleAddStudent} className="add-student-form">
             <input type="text" placeholder="학생 이름" value={newName} onChange={(e) => setNewName(e.target.value)} required />
             <input type="text" placeholder="학교" value={newSchool} onChange={(e) => setNewSchool(e.target.value)} />
-            <input type="text" placeholder="학년" value={newGrade} onChange={(e) => setNewGrade(e.target.value)} />
+            <input type="text" placeholder="학년 (예: 초1)" value={newGrade} onChange={(e) => setNewGrade(e.target.value)} />
             <input type="text" placeholder="학부모 연락처" value={newParentPhone} onChange={(e) => setNewParentPhone(e.target.value)} />
             <select value={newSubjects} onChange={(e) => setNewSubjects(e.target.value)}>
               <option value="영어+수학">영어 + 수학</option>
@@ -259,15 +279,13 @@ function App() {
               <div className="student-card-top">
                 <div className="student-info-left">
                   <span className="student-name">{student.name}</span>
-                  <span className="student-badge">({student.school || '학교미입력'} / {userSubjects})</span>
+                  <span className="student-badge">({student.school || '학교미입력'} {student.grade ? `/ ${student.grade}` : ''} / {userSubjects})</span>
                   <span className={`status-badge-inline ${student.status === '등원' ? 'in' : student.status === '하원' ? 'out' : 'none'}`}>
                     [{student.status === '등원' ? `등원 중: ${student.current_subject}` : student.status === '하원' ? '하원' : '미등원'}]
                   </span>
                 </div>
 
                 <div className="student-actions-right">
-                  <button onClick={() => openCalendarModal(student)} className="btn-calendar">📅 달력</button>
-                  
                   {(userRole === 'director' || userRole === 'english') && userSubjects.includes('영어') && (
                     <button onClick={() => handleCheckIn(student, '영어')} className={`action-btn ${student.current_subject === '영어' ? 'btn-eng-active' : ''}`}>등원(영)</button>
                   )}
@@ -327,31 +345,6 @@ function App() {
                 <button type="button" className="btn-secondary" onClick={() => setEditingStudent(null)}>취소</button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* 달력 모달 */}
-      {calendarStudent && (
-        <div className="modal-backdrop">
-          <div className="modal-card" style={{ maxWidth: '500px' }}>
-            <h3>📅 {calendarStudent.name} 학생 월별 출석 기록</h3>
-            <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '12px' }}>이번 달 누적 출석 내역입니다.</p>
-            <div style={{ maxHeight: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {studentMonthLogs.length === 0 ? (
-                <p>이번 달 기록이 없습니다.</p>
-              ) : (
-                studentMonthLogs.map((log) => (
-                  <div key={log.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px', background: '#f8fafc', borderRadius: '6px', fontSize: '0.85rem' }}>
-                    <span>{new Date(log.timestamp).toLocaleString()}</span>
-                    <span><strong>{log.type}</strong> ({log.subject})</span>
-                  </div>
-                ))
-              )}
-            </div>
-            <div className="modal-actions">
-              <button type="button" className="btn-secondary" onClick={() => setCalendarStudent(null)}>닫기</button>
-            </div>
           </div>
         </div>
       )}
