@@ -44,6 +44,8 @@ function App() {
   // 필터 및 검색
   const [filter, setFilter] = useState('전체')
   const [searchQuery, setSearchQuery] = useState('')
+  
+  // ★ 1초마다 갱신되도록 변경하여 데이터베이스 조회 없이 브라우저에서 실시간 타이머 작동
   const [now, setNow] = useState(new Date())
 
   // 캘린더 모달 및 실시간 과목별 누적 시간 데이터
@@ -55,7 +57,8 @@ function App() {
   useEffect(() => {
     fetchStudents()
 
-    const timer = setInterval(() => setNow(new Date()), 10000)
+    // 10초마다 갱신되던 것을 1초(1000ms)마다 갱신되도록 수정하여 실시간 반영
+    const timer = setInterval(() => setNow(new Date()), 1000)
 
     const channel = supabase
       .channel('schema-db-changes')
@@ -175,7 +178,6 @@ function App() {
     }
   }
 
-  // 늦게 눌렀을 때 시간을 N분 앞으로 당겨주고, 총 공부시간도 그만큼 늘어나도록 처리
   async function adjustCheckInTime(student, minutesAgo) {
     if (!student.first_checkin_timestamp) return
 
@@ -218,7 +220,7 @@ function App() {
       end_time: `${subject}(${minutesToAdd}분): ${startTimeStr} ~ ${endTimeStr}`,
       end_timestamp: endTimeObj.getTime(),
       first_checkin_timestamp: current.getTime(), 
-      target_minutes: minutesToAdd                
+      target_minutes: minutesToAdd                     
     }).eq('id', student.id)
 
     await logAttendance(student.name, subject, student.attendance === '등원' ? `${subject} 전환` : '등원')
@@ -299,13 +301,10 @@ function App() {
       }
     }
 
-    // [수정 핵심] 등원 상태이고 first_checkin_timestamp가 보정된 경우, 실제 현재 시각과의 차이뿐만 아니라 
-    // 보정된 시작 시간(first_checkin_timestamp)을 기준으로 누적 시간이 산출되도록 반영함
     if (student.attendance === '등원' && student.first_checkin_timestamp && student.current_subject) {
       const liveMins = Math.floor((now.getTime() - student.first_checkin_timestamp) / (1000 * 60))
       if (liveMins > 0) {
         if (student.current_subject === '영어') {
-          // 기존 로그 계산값에 보정된 현재 과목 시간 전체를 반영
           englishMins = Math.max(englishMins, liveMins)
         }
         if (student.current_subject === '수학') {
@@ -739,7 +738,7 @@ function App() {
               <div style={{ color: 'blue' }}>토</div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '3px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
               {renderCalendar()}
             </div>
           </div>
