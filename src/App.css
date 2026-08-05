@@ -16,37 +16,38 @@ html, body {
   padding: 10px;
 }
 
-/* 학생 관리 액션 버튼 영역 (모바일 대응) */
+/* 학생 관리 액션 버튼 영역 (기본) */
 .student-action-buttons {
-  display: flex !important;
-  flex-direction: row !important;
-  justify-content: flex-end !important;
-  flex-wrap: nowrap !important;
-  gap: 4px !important;
-  width: 100% !important;
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
 }
 
-.student-action-buttons div,
-.student-action-buttons button {
-  width: auto !important;
-  flex: 0 0 auto !important;
-}
-
-/* 미디어 쿼리 (모바일 화면) */
+/* 모바일 화면 배치 수정 (비율 및 짤림 방지) */
 @media (max-width: 600px) {
   .student-action-buttons {
     display: flex !important;
     flex-direction: row !important;
+    flex-wrap: wrap !important; /* 화면이 좁으면 자연스럽게 줄바꿈되도록 수정 */
     justify-content: flex-end !important;
-    flex-wrap: nowrap !important;
-    gap: 4px !important;
+    align-items: center !important;
+    gap: 6px !important;
     width: 100% !important;
+    padding: 4px 0 !important;
   }
 
+  /* 버튼과 내부 div 요소들이 짤리지 않고 비율에 맞게 조절되도록 설정 */
   .student-action-buttons div,
   .student-action-buttons button {
-    width: auto !important;
-    flex: 0 0 auto !important;
+    flex: 1 1 auto !important; /* 고정 크기 대신 화면에 맞춰 유연하게 비율 조정 */
+    min-width: auto !important;
+    max-width: 100% !important;
+    font-size: 12px !important; /* 모바일에서 글자가 짤리지 않게 크기 최적화 */
+    padding: 6px 8px !important;
+    white-space: nowrap !important;
   }
 
   html, body {
