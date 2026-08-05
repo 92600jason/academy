@@ -1,0 +1,39 @@
+/* 기본 스타일 */
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+/* 폰(모바일) 화면 맞춤 반응형 스타일 */
+@media (max-width: 600px) {
+  /* 버튼 터치 영역 및 글자 크기 모바일 최적화 */
+  button {
+    font-size: 12px !important;
+    padding: 6px 10px !important;
+    min-height: 32px !important; /* 손가락 터치하기 쉬운 높이 */
+  }
+
+  /* 학생 카드 레이아웃 전환 */
+  .student-card-inner {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+  }
+
+  .student-info-group {
+    width: 100% !important;
+    justify-content: space-between !important;
+  }
+
+  .student-action-buttons {
+    width: 100% !important;
+    justify-content: flex-end !important;
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+
+  .student-action-buttons div {
+    width: auto !important;
+  }
+}
