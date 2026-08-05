@@ -61,3 +61,21 @@ html, body {
     max-width: 100vw !important;
   }
 }
+/* 모바일에서 우측 버튼 영역이 밀려나거나 잘리지 않도록 강제 고정 */
+@media (max-width: 600px) {
+  .student-action-buttons,
+  div[class*="action"],
+  div[class*="button"] {
+    position: relative !important;
+    max-width: 35% !important; /* 전체 화면의 35폭 이상 넘지 않게 제한 */
+    overflow: hidden !important;
+  }
+
+  /* 행 전체가 좁은 화면에서 찌그러지지 않게 조절 */
+  .student-row, 
+  li {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+  }
+}
