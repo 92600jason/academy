@@ -46,15 +46,45 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('')
   
   const [tick, setTick] = useState(0)
+  const [notifiedStudents, setNotifiedStudents] = useState({}) // 💡 이미 알림을 보낸 학생 기록
   const now = new Date()
 
+  // 💡 [알림 권한] 최초 1회만 권한 요청 (이미 허용/거부했으면 다시 묻지 않음)
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission()
+    }
+  }, [])
+
+  // 💡 알림 발송 함수
+  const sendNotification = (student) => {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('⏰ 수업 시간 종료 알림', {
+        body: `${student.name} 학생의 ${student.current_subject || ''} 수업 시간이 완료되었습니다!`,
+        icon: '/favicon.ico'
+      })
+    }
+  }
+
+  // 💡 타이머 및 시간 만료 알림 체크
   useEffect(() => {
     const timer = setInterval(() => {
       setTick(prev => prev + 1)
+
+      // 등원 중인 학생의 시간 만료 여부 감지
+      const currentTime = Date.now()
+      students.forEach(student => {
+        if (student.attendance === '등원' && student.end_timestamp) {
+          if (currentTime >= student.end_timestamp && !notifiedStudents[student.id]) {
+            sendNotification(student)
+            setNotifiedStudents(prev => ({ ...prev, [student.id]: true }))
+          }
+        }
+      })
     }, 1000)
     
     return () => clearInterval(timer)
-  }, [])
+  }, [students, notifiedStudents])
 
   const [selectedStudent, setSelectedStudent] = useState(null)
   const [studentLogs, setStudentLogs] = useState([])
@@ -104,7 +134,6 @@ function App() {
   function handleLogin(e) {
     e.preventDefault()
     let role = null
-    // 💡 비밀번호 변경 완료
     if (passwordInput === '4507') role = 'director'
     else if (passwordInput === '0000') role = 'english'
     else if (passwordInput === '0926') role = 'math'
@@ -113,7 +142,6 @@ function App() {
       setUserRole(role)
       localStorage.setItem('academy_user_role', role)
     } else {
-      // 💡 오류 메시지에서 비밀번호 힌트 제거
       alert('비밀번호가 틀렸습니다.')
     }
     setPasswordInput('')
@@ -213,6 +241,9 @@ function App() {
       updateData.target_minutes = newDuration
       updateData.end_timestamp = newEndTimeObj.getTime()
       updateData.end_time = `${student.current_subject}(${newDuration}분): ${startTimeStr} ~ ${endTimeStr}`
+      
+      // 시간이 재설정되면 알림 기록 초기화
+      setNotifiedStudents(prev => ({ ...prev, [student.id]: false }))
     }
 
     const { error } = await supabase.from('students').update(updateData).eq('id', student.id)
@@ -235,6 +266,9 @@ function App() {
     const startTimeObj = new Date(newCheckinTime)
     const startTimeStr = startTimeObj.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
     const endTimeStr = newEndTimeObj.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
+
+    // 알림 기록 초기화
+    setNotifiedStudents(prev => ({ ...prev, [student.id]: false }))
 
     const { error } = await supabase.from('students').update({
       first_checkin_timestamp: newCheckinTime,
@@ -271,6 +305,9 @@ function App() {
       await logAttendance(student.name, student.current_subject, `${student.current_subject} 종료`)
     }
 
+    // 등원/전환 시 알림 상태 초기화
+    setNotifiedStudents(prev => ({ ...prev, [student.id]: false }))
+
     await supabase.from('students').update({ 
       attendance: '등원',
       current_subject: subject,
@@ -287,6 +324,9 @@ function App() {
   }
 
   async function handleStatusChange(student, status) {
+    // 하원/미등원 시 알림 상태 초기화
+    setNotifiedStudents(prev => ({ ...prev, [student.id]: false }))
+
     await supabase.from('students').update({ 
       attendance: status,
       current_subject: null,
@@ -528,7 +568,6 @@ function App() {
       <div className="login-container">
         <form onSubmit={handleLogin} className="login-form">
           <h2 className="login-title">🔐 학원 시스템 로그인</h2>
-          {/* 💡 로그인 화면에서 비밀번호 힌트 제거 */}
           <p className="login-desc">
             비밀번호를 입력해 주세요.
           </p>
@@ -578,8 +617,8 @@ function App() {
           </select>
           <select value={subjects} onChange={(e) => setSubjects(e.target.value)} className="form-select subject-select">
             <option value="영어+수학">영어 + 수학</option>
-            <option value="영어">영어만</option>
-            <option value="수학">수학만</option>
+            <option value="영어만">영어만</option>
+            <option value="수학만">수학만</option>
           </select>
 
           <select value={defaultDuration} onChange={(e) => setDefaultDuration(e.target.value)} className="form-select duration-select">
