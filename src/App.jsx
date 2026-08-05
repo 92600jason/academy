@@ -25,7 +25,10 @@ const DURATION_OPTIONS = [
 ]
 
 function App() {
-  const [userRole, setUserRole] = useState(null)
+  // 🔥 새로고침해도 로그인 상태가 유지되도록 로컬스토리지 연동
+  const [userRole, setUserRole] = useState(() => {
+    return localStorage.getItem('academy_user_role') || null
+  })
   const [passwordInput, setPasswordInput] = useState('')
 
   const [students, setStudents] = useState([])
@@ -90,16 +93,23 @@ function App() {
 
   function handleLogin(e) {
     e.preventDefault()
-    if (passwordInput === '1234') { 
-      setUserRole('director')
-    } else if (passwordInput === '1111') {
-      setUserRole('english')
-    } else if (passwordInput === '2222') {
-      setUserRole('math')
+    let role = null
+    if (passwordInput === '1234') role = 'director'
+    else if (passwordInput === '1111') role = 'english'
+    else if (passwordInput === '2222') role = 'math'
+
+    if (role) {
+      setUserRole(role)
+      localStorage.setItem('academy_user_role', role)
     } else {
       alert('비밀번호가 틀렸습니다.\n(원장:1234 / 영어:1111 / 수학:2222)')
     }
     setPasswordInput('')
+  }
+
+  function handleLogout() {
+    setUserRole(null)
+    localStorage.removeItem('academy_user_role')
   }
 
   async function fetchStudents() {
@@ -505,7 +515,7 @@ function App() {
             ({userRole === 'director' ? '👑 원장 모드 (전체)' : userRole === 'english' ? '📖 영어 선생님 모드' : '📐 수학 선생님 모드'})
           </span>
         </h2>
-        <button onClick={() => setUserRole(null)} className="logout-btn">
+        <button onClick={handleLogout} className="logout-btn">
           로그아웃
         </button>
       </div>
