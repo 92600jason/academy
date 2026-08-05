@@ -46,23 +46,44 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('')
   
   const [tick, setTick] = useState(0)
-  const [notifiedStudents, setNotifiedStudents] = useState({}) // 알림 중복 방지
+
+  // 💡 [개선 1] 알림 중복 방지: localStorage 연동으로 새로고침해도 알림 상태 유지
+  const [notifiedStudents, setNotifiedStudents] = useState(() => {
+    const saved = localStorage.getItem('academy_notified_students')
+    return saved ? JSON.parse(saved) : {}
+  })
+
+  useEffect(() => {
+    localStorage.setItem('academy_notified_students', JSON.stringify(notifiedStudents))
+  }, [notifiedStudents])
+
+  // 날짜가 바뀌면(자정 지나면) 알림 기록 자동 리셋
+  useEffect(() => {
+    const todayStr = new Date().toDateString()
+    const lastSavedDate = localStorage.getItem('academy_notified_date')
+
+    if (lastSavedDate !== todayStr) {
+      setNotifiedStudents({})
+      localStorage.setItem('academy_notified_date', todayStr)
+    }
+  }, [])
+
   const now = new Date()
 
-  // 💡 최신 students 데이터를 타이머 안에서 참조하기 위한 Ref
+  // 최신 students 데이터를 타이머 안에서 참조하기 위한 Ref
   const studentsRef = useRef(students)
   useEffect(() => {
     studentsRef.current = students
   }, [students])
 
-  // 💡 [알림 권한] 최초 1회만 권한 요청
+  // [알림 권한] 최초 1회만 권한 요청
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission()
     }
   }, [])
 
-  // 💡 알림 발송 함수
+  // 알림 발송 함수
   const sendNotification = (student) => {
     if ('Notification' in window && Notification.permission === 'granted') {
       new Notification('⏰ 수업 시간 종료 알림', {
@@ -72,7 +93,7 @@ function App() {
     }
   }
 
-  // 💡 1초마다 종료 시각(end_timestamp) 도달 여부 감지
+  // 1초마다 종료 시각(end_timestamp) 도달 여부 감지
   useEffect(() => {
     const timer = setInterval(() => {
       setTick(prev => prev + 1)
@@ -80,7 +101,6 @@ function App() {
       const currentTime = Date.now()
       studentsRef.current.forEach(student => {
         if (student.attendance === '등원' && student.end_timestamp) {
-          // 종료 예정 시각이 지났고, 아직 알림을 안 보낸 경우
           if (currentTime >= student.end_timestamp && !notifiedStudents[student.id]) {
             sendNotification(student)
             setNotifiedStudents(prev => ({ ...prev, [student.id]: true }))
@@ -220,23 +240,26 @@ function App() {
     setEditName(student.name)
     setEditSchoolLevel(student.school_level || '초1')
     setEditSubjects(student.subjects || '영어+수학')
-    setEditDefaultDuration(student.default_duration || 60)
+    // 현재 적용 중인 목표 시간이 있으면 가져오고, 없으면 기본 설정 시간 가져오기
+    setEditDefaultDuration(student.target_minutes || student.default_duration || 60)
   }
 
+  // 💡 [개선 2] 시간 수정 로직: 원장님은 '원래 기준 시간' 변경, 선생님은 '당일 1회성 시간'만 변경
   async function saveEdit(student) {
     if (!editName.trim()) return
 
     const newDuration = Number(editDefaultDuration)
-    const updateData = {
-      default_duration: newDuration
-    }
+    const updateData = {}
 
     if (userRole === 'director') {
+      // 원장님: 이름, 학교, 과목, 그리고 '원래 기본 시간(default_duration)' 자체를 변경
       updateData.name = editName
       updateData.school_level = editSchoolLevel
       updateData.subjects = editSubjects
+      updateData.default_duration = newDuration
     }
 
+    // 등원 중인 경우 현재 수업의 목표 시간과 종료 예정 시각 즉시 업데이트
     if (student.attendance === '등원') {
       const baseCheckinTime = student.first_checkin_timestamp || Date.now()
       const newEndTimeObj = new Date(baseCheckinTime + newDuration * 60000)
@@ -297,7 +320,8 @@ function App() {
 
   async function handleCheckIn(student, subject) {
     const current = new Date()
-    const minutesToAdd = student.default_duration || 60
+    // 현재 설정된 1회성 시간이 있으면 사용하고, 없으면 원장님이 정한 기본 시간 사용
+    const minutesToAdd = student.target_minutes || student.default_duration || 60
     const endTimeObj = new Date(current.getTime() + minutesToAdd * 60000)
 
     const startTimeStr = current.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
@@ -326,6 +350,7 @@ function App() {
     fetchLogsForTodayOnly()
   }
 
+  // 💡 [개선 2-2] 하원 또는 미등원 처리 시: 당일 임시 설정(target_minutes)을 삭제하여 원장님의 기본 시간으로 완전 복구!
   async function handleStatusChange(student, status) {
     setNotifiedStudents(prev => ({ ...prev, [student.id]: false }))
 
@@ -335,7 +360,7 @@ function App() {
       end_time: null,
       end_timestamp: null,
       first_checkin_timestamp: null,
-      target_minutes: null
+      target_minutes: null // ⭐ 하원/미등원 시 임시 시간을 초기화하여 원래 원장님 기본 설정 시간(default_duration)으로 복구
     }).eq('id', student.id)
 
     await logAttendance(student.name, student.current_subject || '일반', status)
@@ -685,9 +710,10 @@ function App() {
                           <option value="영어만">영어만</option>
                           <option value="수학만">수학만</option>
                         </select>
+                        <span className="edit-notice-text">👑 기본 고정 시간 수정</span>
                       </>
                     ) : (
-                      <span className="edit-notice-text">⏰ 기본 수업 시간 수정</span>
+                      <span className="edit-notice-text">⏱️ 오늘 1회성 시간 수정</span>
                     )}
 
                     <select value={editDefaultDuration} onChange={(e) => setEditDefaultDuration(e.target.value)} className="edit-select">
