@@ -138,7 +138,7 @@ function App() {
       const nowObj = new Date()
       const timeStr = nowObj.toLocaleString('ko-KR')
       const isoStr = nowObj.toISOString()
-      await supabase.from('attendance_logs'].insert([
+      await supabase.from('attendance_logs').insert([
         { 
           student_name: studentName, 
           subject: subject, 
@@ -471,7 +471,6 @@ function App() {
     return days
   }
 
-  // 🔥 핵심: userRole이 없을 때는 무조건 로그인 화면만 렌더링되도록 처리
   if (!userRole) {
     return (
       <div className="login-container">
