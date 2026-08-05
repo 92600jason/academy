@@ -104,7 +104,6 @@ function App() {
   function handleLogin(e) {
     e.preventDefault()
     let role = null
-    // 💡 비밀번호 변경 완료
     if (passwordInput === '4507') role = 'director'
     else if (passwordInput === '0000') role = 'english'
     else if (passwordInput === '0926') role = 'math'
@@ -113,7 +112,6 @@ function App() {
       setUserRole(role)
       localStorage.setItem('academy_user_role', role)
     } else {
-      // 💡 오류 메시지에서 비밀번호 힌트 제거
       alert('비밀번호가 틀렸습니다.')
     }
     setPasswordInput('')
@@ -528,7 +526,6 @@ function App() {
       <div className="login-container">
         <form onSubmit={handleLogin} className="login-form">
           <h2 className="login-title">🔐 학원 시스템 로그인</h2>
-          {/* 💡 로그인 화면에서 비밀번호 힌트 제거 */}
           <p className="login-desc">
             비밀번호를 입력해 주세요.
           </p>
@@ -578,8 +575,8 @@ function App() {
           </select>
           <select value={subjects} onChange={(e) => setSubjects(e.target.value)} className="form-select subject-select">
             <option value="영어+수학">영어 + 수학</option>
-            <option value="영어">영어만</option>
-            <option value="수학">수학만</option>
+            <option value="영어만">영어만</option>
+            <option value="수학만">수학만</option>
           </select>
 
           <select value={defaultDuration} onChange={(e) => setDefaultDuration(e.target.value)} className="form-select duration-select">
@@ -685,12 +682,12 @@ function App() {
                       </div>
 
                       <div className="card-actions">
-                        {(userRole === 'director' || userRole === 'english') && (userSubjects === '영어' || userSubjects === '영어+수학') && (
+                        {(userRole === 'director' || userRole === 'english') && (userSubjects.includes('영어')) && (
                           <button onClick={() => handleCheckIn(student, '영어')} className={`action-btn ${student.current_subject === '영어' ? 'btn-eng-active' : 'btn-default'}`}>
                             등원(영)
                           </button>
                         )}
-                        {(userRole === 'director' || userRole === 'math') && (userSubjects === '수학' || userSubjects === '영어+수학') && (
+                        {(userRole === 'director' || userRole === 'math') && (userSubjects.includes('수학')) && (
                           <button onClick={() => handleCheckIn(student, '수학')} className={`action-btn ${student.current_subject === '수학' ? 'btn-math-active' : 'btn-default'}`}>
                             등원(수)
                           </button>
