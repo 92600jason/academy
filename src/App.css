@@ -8,6 +8,7 @@ html, body {
   max-width: 100vw;
   margin: 0;
   padding: 0;
+  -webkit-text-size-adjust: none;
 }
 
 .App {
@@ -16,38 +17,47 @@ html, body {
   padding: 10px;
 }
 
-/* 학생 관리 액션 버튼 영역 (컴퓨터/모바일 공통 고정 정렬) */
+/* 액션 버튼 영역 (기본/컴퓨터/패드) */
 .student-action-buttons {
   display: flex !important;
   flex-direction: row !important;
-  flex-wrap: nowrap !important; /* 절대 줄바꿈되거나 아래로 떨어지지 않게 고정 */
+  flex-wrap: nowrap !important;
   align-items: center !important;
   justify-content: flex-end !important;
-  gap: 3px !important;
-  width: auto !important;
-  flex-shrink: 0 !important;
+  gap: 4px !important;
 }
 
-/* 버튼과 내부 div 요소들이 공간에 맞춰 줄어들 수 있게 설정 */
 .student-action-buttons div,
 .student-action-buttons button {
-  flex: 0 1 auto !important;
-  width: auto !important;
-  max-width: none !important;
-  font-size: 11px !important; /* 글자 크기를 살짝 줄여서 좁은 화면에서도 짤림 방지 */
-  padding: 4px 6px !important;
   white-space: nowrap !important;
 }
 
-/* 모바일 또는 화면이 좁아졌을 때 반응형 대응 */
-@media (max-width: 768px) {
+/* =========================================================
+   ★ 모바일 전용 콤팩트 가로 배치 (세로로 안 내리고 압축)
+   ========================================================= */
+@media (max-width: 600px) {
   .student-action-buttons {
-    gap: 2px !important;
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important; /* 세로로 꺾이지 않고 무조건 한 줄 유지 */
+    justify-content: flex-end !important;
+    align-items: center !important;
+    gap: 2px !important; /* 간격을 아주 좁게 압축 */
+    width: auto !important;
   }
-  
+
+  /* 모바일에서 버튼 크기와 글자를 줄여서 한 화면에 쏙 들어가게 조절 */
   .student-action-buttons div,
   .student-action-buttons button {
-    font-size: 10px !important;
-    padding: 3px 5px !important;
+    flex: 0 0 auto !important;
+    width: auto !important;
+    font-size: 10px !important; /* 폰트를 작게 만들어 짤림 방지 */
+    padding: 3px 5px !important; /* 여백을 줄여서 컴팩트하게 */
+    white-space: nowrap !important;
+  }
+
+  html, body {
+    overflow-x: hidden !important;
+    max-width: 100vw !important;
   }
 }
