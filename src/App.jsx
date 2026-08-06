@@ -429,6 +429,27 @@ function App() {
       return true
     })
     .sort((a, b) => {
+      const getPriority = (student) => {
+        const cardStatus = getCardStatus(student)
+        
+        if (cardStatus === 'finished') return 1
+        
+        if (cardStatus === 'next_subject') {
+          const nextSub = student.current_subject === '영어' ? '수학' : '영어'
+          if (nextSub === '수학') return 2
+          if (nextSub === '영어') return 3
+        }
+        
+        return 4
+      }
+
+      const priorityA = getPriority(a)
+      const priorityB = getPriority(b)
+
+      if (priorityA !== priorityB) {
+        return priorityA - priorityB
+      }
+
       const gradeA = GRADE_ORDER[a.school_level] || 99
       const gradeB = GRADE_ORDER[b.school_level] || 99
       if (gradeA !== gradeB) return gradeA - gradeB
