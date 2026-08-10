@@ -127,7 +127,6 @@ function App() {
     if (!error && data) {
       const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
       
-      // 자정이 지나서 날짜가 바뀌었는데 여전히 '등원' 상태이고 마지막 체크인 날짜가 오늘이 아닌 경우 자동 미등원 처리
       const updatedStudents = await Promise.all(
         data.map(async (student) => {
           if (student.attendance === '등원' && student.first_checkin_timestamp) {
@@ -135,14 +134,14 @@ function App() {
             const checkinDateStr = `${checkinDate.getFullYear()}-${String(checkinDate.getMonth() + 1).padStart(2, '0')}-${String(checkinDate.getDate()).padStart(2, '0')}`
             
             if (checkinDateStr !== todayStr) {
-              // 날짜가 바뀐 경우 DB 상태 초기화
               await supabase.from('students').update({
                 attendance: '미등원',
                 current_subject: null,
                 end_time: null,
                 end_timestamp: null,
                 first_checkin_timestamp: null,
-                target_minutes: null
+                target_minutes: null,
+                completed_subjects: []
               }).eq('id', student.id)
 
               return {
@@ -152,7 +151,8 @@ function App() {
                 end_time: null,
                 end_timestamp: null,
                 first_checkin_timestamp: null,
-                target_minutes: null
+                target_minutes: null,
+                completed_subjects: []
               }
             }
           }
@@ -202,7 +202,8 @@ function App() {
       default_duration: Number(defaultDuration),
       attendance: '미등원',
       current_subject: null,
-      end_time: null
+      end_time: null,
+      completed_subjects: []
     }])
 
     if (error) {
@@ -299,7 +300,11 @@ function App() {
 
     const isSwitching = student.attendance === '등원' && student.current_subject && student.current_subject !== subject
 
-    if (isSwitching) {
+    let completedList = student.completed_subjects || []
+    if (isSwitching && student.current_subject) {
+      if (!completedList.includes(student.current_subject)) {
+        completedList.push(student.current_subject)
+      }
       await logAttendance(student.name, student.current_subject, `${student.current_subject} 종료`)
     }
 
@@ -309,7 +314,8 @@ function App() {
       end_time: `${subject}(${minutesToAdd}분): ${startTimeStr} ~ ${endTimeStr}`,
       end_timestamp: endTimeObj.getTime(),
       first_checkin_timestamp: current.getTime(), 
-      target_minutes: minutesToAdd                     
+      target_minutes: minutesToAdd,
+      completed_subjects: completedList
     }).eq('id', student.id)
 
     const logStatus = student.attendance === '등원' ? `${subject} 전환` : '등원'
@@ -319,14 +325,17 @@ function App() {
   }
 
   async function handleStatusChange(student, status) {
-    await supabase.from('students').update({ 
+    let updateData = { 
       attendance: status,
       current_subject: null,
       end_time: null,
       end_timestamp: null,
       first_checkin_timestamp: null,
-      target_minutes: null
-    }).eq('id', student.id)
+      target_minutes: null,
+      completed_subjects: []
+    }
+
+    await supabase.from('students').update(updateData).eq('id', student.id)
 
     await logAttendance(student.name, student.current_subject || '일반', status)
     fetchStudents()
@@ -448,6 +457,27 @@ function App() {
     return true
   })
 
+  const getCardStatus = (student) => {
+    if (student.attendance !== '등원' || !student.end_timestamp) return 'normal'
+    const isExpired = now.getTime() > student.end_timestamp
+    if (!isExpired) return 'normal'
+
+    const userSubjects = student.subjects || '영어+수학'
+    const completed = student.completed_subjects || []
+
+    if (userSubjects === '영어+수학') {
+      const totalRequired = 2
+      const currentDoneCount = completed.length + 1
+      if (currentDoneCount < totalRequired) {
+        return 'next_subject'
+      } else {
+        return 'finished'
+      }
+    } else {
+      return 'finished'
+    }
+  }
+
   const filteredStudents = roleFilteredStudents
     .filter(student => {
       if (searchQuery && !student.name.includes(searchQuery)) return false
@@ -463,18 +493,38 @@ function App() {
       return true
     })
     .sort((a, b) => {
+      const aAttending = a.attendance === '등원' ? 1 : 0
+      const bAttending = b.attendance === '등원' ? 1 : 0
+
+      const aStatus = getCardStatus(a)
+      const bStatus = getCardStatus(b)
+
+      const aFinished = (aStatus === 'finished' || a.attendance === '하원') ? 1 : 0
+      const bFinished = (bStatus === 'finished' || b.attendance === '하원') ? 1 : 0
+
+      // 1순위: 등원 중인 학생이 맨 위로
+      if (aAttending !== bAttending) {
+        return bAttending - aAttending
+      }
+
+      // 2순위: 등원 중이라면 마감(end_timestamp)이 빠른 순서대로
+      if (a.attendance === '등원' && b.attendance === '등원') {
+        const timeA = a.end_timestamp || 0
+        const timeB = b.end_timestamp || 0
+        if (timeA !== timeB) return timeA - timeB
+      }
+
+      // 3순위: 목표 완료 되었거나 집에 갈 친구들 먼저 정렬
+      if (aFinished !== bFinished) {
+        return bFinished - aFinished
+      }
+
+      // 4순위: 학년순 -> 이름순
       const gradeA = GRADE_ORDER[a.school_level] || 99
       const gradeB = GRADE_ORDER[b.school_level] || 99
       if (gradeA !== gradeB) return gradeA - gradeB
       return a.name.localeCompare(b.name, 'ko')
     })
-
-  const getCardStatus = (student) => {
-    if (student.attendance !== '등원' || !student.end_timestamp) return 'normal'
-    const isExpired = now.getTime() > student.end_timestamp
-    if (!isExpired) return 'normal'
-    return (student.subjects || '영어+수학') === '영어+수학' ? 'next_subject' : 'finished'
-  }
 
   const getDailyStudySummary = () => {
     const summary = {}
@@ -707,9 +757,6 @@ function App() {
                       <div className="card-left-info">
                         <strong className="student-name">{student.name}</strong> 
                         <span className="student-meta">({student.school_level || '초1'} / {userSubjects})</span>
-                        <span className={`attendance-badge ${student.attendance === '등원' ? 'status-attending' : student.attendance === '하원' ? 'status-leaving' : 'status-absent'}`}>
-                          [{student.attendance || '미등원'}]
-                        </span>
                         <button onClick={() => openStudentCalendar(student)} className="calendar-open-btn">
                           📅 달력
                         </button>
