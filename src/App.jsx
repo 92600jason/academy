@@ -43,6 +43,7 @@ function App() {
   const [editDefaultDuration, setEditDefaultDuration] = useState(60)
 
   const [filter, setFilter] = useState('전체')
+  const [sortCategory, setSortCategory] = useState('default') // 'default', 'status', 'grade'
   const [searchQuery, setSearchQuery] = useState('')
   
   const [tick, setTick] = useState(0)
@@ -493,36 +494,57 @@ function App() {
       return true
     })
     .sort((a, b) => {
+      // 0순위 (공통): 하원한 친구들은 무조건 맨 아래로 내리기
+      const aIsLeave = a.attendance === '하원' ? 1 : 0
+      const bIsLeave = b.attendance === '하원' ? 1 : 0
+      if (aIsLeave !== bIsLeave) {
+        return aIsLeave - bIsLeave // 하원인 쪽(1)이 뒤로 감
+      }
+
+      // 1. [등하원 순 정렬 카테고리]
+      if (sortCategory === 'status') {
+        const getStatusPriority = (s) => {
+          if (s.attendance === '등원') return 1
+          if (s.attendance === '미등원' || !s.attendance) return 2
+          if (s.attendance === '하원') return 3
+          return 4
+        }
+        const pA = getStatusPriority(a)
+        const pB = getStatusPriority(b)
+        if (pA !== pB) return pA - pB
+
+        // 등원 중인 경우 마감 임박 순
+        if (a.attendance === '등원' && b.attendance === '등원') {
+          const timeA = a.end_timestamp || 0
+          const timeB = b.end_timestamp || 0
+          if (timeA !== timeB) return timeA - timeB
+        }
+      }
+
+      // 2. [학년 순 정렬 카테고리]
+      if (sortCategory === 'grade') {
+        const gradeA = GRADE_ORDER[a.school_level] || 99
+        const gradeB = GRADE_ORDER[b.school_level] || 99
+        if (gradeA !== gradeB) return gradeA - gradeB
+      }
+
+      // 3. [기본 정렬 카테고리] (등원 중 맨 위 + 마감 임박 순 + 학년순 + 이름순)
       const aAttending = a.attendance === '등원' ? 1 : 0
       const bAttending = b.attendance === '등원' ? 1 : 0
-
-      const aStatus = getCardStatus(a)
-      const bStatus = getCardStatus(b)
-
-      const aFinished = (aStatus === 'finished' || a.attendance === '하원') ? 1 : 0
-      const bFinished = (bStatus === 'finished' || b.attendance === '하원') ? 1 : 0
-
-      // 1순위: 등원 중인 학생이 맨 위로
       if (aAttending !== bAttending) {
         return bAttending - aAttending
       }
 
-      // 2순위: 등원 중이라면 마감(end_timestamp)이 빠른 순서대로
       if (a.attendance === '등원' && b.attendance === '등원') {
         const timeA = a.end_timestamp || 0
         const timeB = b.end_timestamp || 0
         if (timeA !== timeB) return timeA - timeB
       }
 
-      // 3순위: 목표 완료 되었거나 집에 갈 친구들 먼저 정렬
-      if (aFinished !== bFinished) {
-        return bFinished - aFinished
-      }
-
-      // 4순위: 학년순 -> 이름순
       const gradeA = GRADE_ORDER[a.school_level] || 99
       const gradeB = GRADE_ORDER[b.school_level] || 99
       if (gradeA !== gradeB) return gradeA - gradeB
+
       return a.name.localeCompare(b.name, 'ko')
     })
 
@@ -683,6 +705,8 @@ function App() {
           onChange={(e) => setSearchQuery(e.target.value)}
           className="search-input"
         />
+
+        {/* 1. 상태 필터 탭 */}
         <div className="filter-tabs">
           {['전체', '등원', '하원', '미등원', '초등', '중등', '고등'].map((tab) => {
             let countText = ''
@@ -700,6 +724,29 @@ function App() {
               </button>
             )
           })}
+        </div>
+
+        {/* 2. 정렬 방식 선택 버튼 (기본 / 등하원순 / 학년순) */}
+        <div className="filter-tabs" style={{ marginTop: '8px', borderTop: '1px dashed #cbd5e0', paddingTop: '8px' }}>
+          <span style={{ fontSize: '13px', alignSelf: 'center', fontWeight: 'bold', marginRight: '4px', color: '#4a5568' }}>정렬:</span>
+          <button
+            onClick={() => setSortCategory('default')}
+            className={`filter-tab-btn ${sortCategory === 'default' ? 'active' : ''}`}
+          >
+            기본정렬
+          </button>
+          <button
+            onClick={() => setSortCategory('status')}
+            className={`filter-tab-btn ${sortCategory === 'status' ? 'active' : ''}`}
+          >
+            등원 ➔ 미등원 ➔ 하원 순
+          </button>
+          <button
+            onClick={() => setSortCategory('grade')}
+            className={`filter-tab-btn ${sortCategory === 'grade' ? 'active' : ''}`}
+          >
+            학년 순
+          </button>
         </div>
       </div>
 
@@ -764,20 +811,32 @@ function App() {
 
                       <div className="card-actions">
                         {(userRole === 'director' || userRole === 'english') && (userSubjects.includes('영어')) && (
-                          <button onClick={() => handleCheckIn(student, '영어')} className={`action-btn ${student.current_subject === '영어' ? 'btn-eng-active' : 'btn-default'}`}>
+                          <button 
+                            onClick={() => handleCheckIn(student, '영어')} 
+                            className={`action-btn ${student.attendance === '등원' && student.current_subject === '영어' ? 'btn-eng-active' : 'btn-default'}`}
+                          >
                             등원(영)
                           </button>
                         )}
                         {(userRole === 'director' || userRole === 'math') && (userSubjects.includes('수학')) && (
-                          <button onClick={() => handleCheckIn(student, '수학')} className={`action-btn ${student.current_subject === '수학' ? 'btn-math-active' : 'btn-default'}`}>
+                          <button 
+                            onClick={() => handleCheckIn(student, '수학')} 
+                            className={`action-btn ${student.attendance === '등원' && student.current_subject === '수학' ? 'btn-math-active' : 'btn-default'}`}
+                          >
                             등원(수)
                           </button>
                         )}
 
-                        <button onClick={() => handleStatusChange(student, '하원')} className={`action-btn ${student.attendance === '하원' ? 'btn-leave-active' : 'btn-default'}`}>
+                        <button 
+                          onClick={() => handleStatusChange(student, '하원')} 
+                          className={`action-btn ${student.attendance === '하원' ? 'btn-leave-active' : 'btn-default'}`}
+                        >
                           하원
                         </button>
-                        <button onClick={() => handleStatusChange(student, '미등원')} className={`action-btn ${student.attendance === '미등원' ? 'btn-absent-active' : 'btn-default'}`}>
+                        <button 
+                          onClick={() => handleStatusChange(student, '미등원')} 
+                          className={`action-btn ${student.attendance === '미등원' ? 'btn-absent-active' : 'btn-default'}`}
+                        >
                           미등원
                         </button>
                         <button onClick={() => startEdit(student)} className="utility-btn btn-edit">수정</button>
