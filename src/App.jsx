@@ -43,7 +43,7 @@ function App() {
   const [editDefaultDuration, setEditDefaultDuration] = useState(60)
 
   const [filter, setFilter] = useState('전체')
-  const [sortCategory, setSortCategory] = useState('default') // 'default', 'status', 'grade'
+  const [sortCategory, setSortCategory] = useState('default') // 'default', 'grade'
   const [searchQuery, setSearchQuery] = useState('')
   
   const [tick, setTick] = useState(0)
@@ -494,15 +494,7 @@ function App() {
       return true
     })
     .sort((a, b) => {
-      // 0순위 (공통): 하원한 친구들은 무조건 맨 아래로 내리기
-      const aIsLeave = a.attendance === '하원' ? 1 : 0
-      const bIsLeave = b.attendance === '하원' ? 1 : 0
-      if (aIsLeave !== bIsLeave) {
-        return aIsLeave - bIsLeave // 하원인 쪽(1)이 뒤로 감
-      }
-
-      // 1. [등하원 순 정렬 카테고리]
-      if (sortCategory === 'status') {
+      if (sortCategory === 'default') {
         const getStatusPriority = (s) => {
           if (s.attendance === '등원') return 1
           if (s.attendance === '미등원' || !s.attendance) return 2
@@ -518,33 +510,23 @@ function App() {
           const timeB = b.end_timestamp || 0
           if (timeA !== timeB) return timeA - timeB
         }
+
+        const gradeA = GRADE_ORDER[a.school_level] || 99
+        const gradeB = GRADE_ORDER[b.school_level] || 99
+        if (gradeA !== gradeB) return gradeA - gradeB
+
+        return a.name.localeCompare(b.name, 'ko')
       }
 
-      // 2. [학년 순 정렬 카테고리]
       if (sortCategory === 'grade') {
         const gradeA = GRADE_ORDER[a.school_level] || 99
         const gradeB = GRADE_ORDER[b.school_level] || 99
         if (gradeA !== gradeB) return gradeA - gradeB
+
+        return a.name.localeCompare(b.name, 'ko')
       }
 
-      // 3. [기본 정렬 카테고리]
-      const aAttending = a.attendance === '등원' ? 1 : 0
-      const bAttending = b.attendance === '등원' ? 1 : 0
-      if (aAttending !== bAttending) {
-        return bAttending - aAttending
-      }
-
-      if (a.attendance === '등원' && b.attendance === '등원') {
-        const timeA = a.end_timestamp || 0
-        const timeB = b.end_timestamp || 0
-        if (timeA !== timeB) return timeA - timeB
-      }
-
-      const gradeA = GRADE_ORDER[a.school_level] || 99
-      const gradeB = GRADE_ORDER[b.school_level] || 99
-      if (gradeA !== gradeB) return gradeA - gradeB
-
-      return a.name.localeCompare(b.name, 'ko')
+      return 0
     })
 
   const getDailyStudySummary = () => {
@@ -726,23 +708,17 @@ function App() {
         </div>
 
         {/* [정렬 카테고리 선택 영역] */}
-        <div className="filter-tabs" style={{ marginTop: '10px', borderTop: '1px solid #e2e8f0', paddingTop: '10px', backgroundColor: '#f8fafc', padding: '8px', borderRadius: '6px' }}>
-          <span style={{ fontSize: '13px', fontWeight: 'bold', marginRight: '8px', color: '#334155', alignSelf: 'center' }}>📌 정렬 방식:</span>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '12px', padding: '10px', backgroundColor: '#eff6ff', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
+          <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#1e40af' }}>🔄 정렬:</span>
           <button
             onClick={() => setSortCategory('default')}
-            className={`filter-tab-btn ${sortCategory === 'default' ? 'active' : ''}`}
+            style={{ padding: '6px 12px', borderRadius: '4px', border: 'none', background: sortCategory === 'default' ? '#2563eb' : '#e2e8f0', color: sortCategory === 'default' ? '#fff' : '#334155', cursor: 'pointer', fontWeight: 'bold' }}
           >
             기본 정렬
           </button>
           <button
-            onClick={() => setSortCategory('status')}
-            className={`filter-tab-btn ${sortCategory === 'status' ? 'active' : ''}`}
-          >
-            등원 ➔ 미등원 ➔ 하원 순
-          </button>
-          <button
             onClick={() => setSortCategory('grade')}
-            className={`filter-tab-btn ${sortCategory === 'grade' ? 'active' : ''}`}
+            style={{ padding: '6px 12px', borderRadius: '4px', border: 'none', background: sortCategory === 'grade' ? '#2563eb' : '#e2e8f0', color: sortCategory === 'grade' ? '#fff' : '#334155', cursor: 'pointer', fontWeight: 'bold' }}
           >
             학년 순
           </button>
