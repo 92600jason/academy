@@ -513,7 +513,6 @@ function App() {
         const pB = getStatusPriority(b)
         if (pA !== pB) return pA - pB
 
-        // 등원 중인 경우 마감 임박 순
         if (a.attendance === '등원' && b.attendance === '등원') {
           const timeA = a.end_timestamp || 0
           const timeB = b.end_timestamp || 0
@@ -528,7 +527,7 @@ function App() {
         if (gradeA !== gradeB) return gradeA - gradeB
       }
 
-      // 3. [기본 정렬 카테고리] (등원 중 맨 위 + 마감 임박 순 + 학년순 + 이름순)
+      // 3. [기본 정렬 카테고리]
       const aAttending = a.attendance === '등원' ? 1 : 0
       const bAttending = b.attendance === '등원' ? 1 : 0
       if (aAttending !== bAttending) {
@@ -706,7 +705,7 @@ function App() {
           className="search-input"
         />
 
-        {/* 1. 상태 필터 탭 */}
+        {/* 상태/그룹 필터 탭 */}
         <div className="filter-tabs">
           {['전체', '등원', '하원', '미등원', '초등', '중등', '고등'].map((tab) => {
             let countText = ''
@@ -726,14 +725,14 @@ function App() {
           })}
         </div>
 
-        {/* 2. 정렬 방식 선택 버튼 (기본 / 등하원순 / 학년순) */}
-        <div className="filter-tabs" style={{ marginTop: '8px', borderTop: '1px dashed #cbd5e0', paddingTop: '8px' }}>
-          <span style={{ fontSize: '13px', alignSelf: 'center', fontWeight: 'bold', marginRight: '4px', color: '#4a5568' }}>정렬:</span>
+        {/* [정렬 카테고리 선택 영역] */}
+        <div className="filter-tabs" style={{ marginTop: '10px', borderTop: '1px solid #e2e8f0', paddingTop: '10px', backgroundColor: '#f8fafc', padding: '8px', borderRadius: '6px' }}>
+          <span style={{ fontSize: '13px', fontWeight: 'bold', marginRight: '8px', color: '#334155', alignSelf: 'center' }}>📌 정렬 방식:</span>
           <button
             onClick={() => setSortCategory('default')}
             className={`filter-tab-btn ${sortCategory === 'default' ? 'active' : ''}`}
           >
-            기본정렬
+            기본 정렬
           </button>
           <button
             onClick={() => setSortCategory('status')}
