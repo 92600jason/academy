@@ -46,6 +46,11 @@ function App() {
   const [sortCategory, setSortCategory] = useState('default') // 'default', 'grade'
   const [searchQuery, setSearchQuery] = useState('')
   
+  // 공용 메모 관련 상태
+  const [memos, setMemos] = useState([])
+  const [newMemoContent, setNewMemoContent] = useState('')
+  const [newMemoExpireDays, setNewMemoExpireDays] = useState('1') // 기본 1일 후 자동 삭제
+  
   const [tick, setTick] = useState(0)
   const now = new Date()
 
@@ -67,10 +72,12 @@ function App() {
 
     fetchStudents()
     fetchLogsForTodayOnly()
+    fetchMemos()
 
     const handleFocus = () => {
       fetchStudents()
       fetchLogsForTodayOnly()
+      fetchMemos()
     }
     window.addEventListener('focus', handleFocus)
 
@@ -95,10 +102,20 @@ function App() {
       )
       .subscribe()
 
+    const memoChannel = supabase
+      .channel('schema-memo-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'shared_memos' },
+        () => fetchMemos()
+      )
+      .subscribe()
+
     return () => {
       window.removeEventListener('focus', handleFocus)
       supabase.removeChannel(studentChannel)
       supabase.removeChannel(logChannel)
+      supabase.removeChannel(memoChannel)
     }
   }, [userRole])
 
@@ -172,6 +189,61 @@ function App() {
 
     if (!error) {
       setTodayLogsData(data || [])
+    }
+  }
+
+  async function fetchMemos() {
+    const { data, error } = await supabase
+      .from('shared_memos')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (!error && data) {
+      const currentTime = Date.now()
+      // 만료된 메모 자동 필터링 및 삭제 처리
+      const activeMemos = []
+      for (const memo of data) {
+        if (memo.expires_at && currentTime > memo.expires_at) {
+          await supabase.from('shared_memos').delete().eq('id', memo.id)
+        } else {
+          activeMemos.push(memo)
+        }
+      }
+      setMemos(activeMemos)
+    }
+  }
+
+  async function addMemo(e) {
+    e.preventDefault()
+    if (!newMemoContent.trim()) return
+
+    const currentTime = Date.now()
+    const days = Number(newMemoExpireDays)
+    const expiresAt = days === 0 ? null : currentTime + (days * 24 * 60 * 60 * 1000)
+
+    const roleName = userRole === 'director' ? '원장님' : userRole === 'english' ? '영어선생님' : '수학선생님'
+
+    const { error } = await supabase.from('shared_memos').insert([
+      {
+        author: roleName,
+        content: newMemoContent,
+        created_at: new Date().toISOString(),
+        expires_at: expiresAt
+      }
+    ])
+
+    if (!error) {
+      setNewMemoContent('')
+      fetchMemos()
+    } else {
+      alert(`메모 등록 실패: ${error.message}\n(Supabase에 shared_memos 테이블이 있는지 확인해주세요)`)
+    }
+  }
+
+  async function deleteMemo(id) {
+    const { error } = await supabase.from('shared_memos').delete().eq('id', id)
+    if (!error) {
+      fetchMemos()
     }
   }
 
@@ -646,6 +718,75 @@ function App() {
         </button>
       </div>
 
+      {/* [공유 메모 보드 섹션] */}
+      <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px', padding: '16px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+        <h3 style={{ margin: '0 0 10px 0', fontSize: '15px', color: '#b45309', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          📌 선생님 공용 알림 및 공유 메모장
+        </h3>
+        
+        {/* 메모 작성 폼 */}
+        <form onSubmit={addMemo} style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+          <input
+            type="text"
+            placeholder="선생님들끼리 공유할 내용을 입력하세요 (예: 오늘 소민이 늦을 수 있음)"
+            value={newMemoContent}
+            onChange={(e) => setNewMemoContent(e.target.value)}
+            style={{ flex: '1', minWidth: '220px', padding: '8px 12px', border: '1px solid #fcd34d', borderRadius: '6px', fontSize: '13px', backgroundColor: '#fff' }}
+          />
+          <select
+            value={newMemoExpireDays}
+            onChange={(e) => setNewMemoExpireDays(e.target.value)}
+            style={{ padding: '8px 10px', border: '1px solid #fcd34d', borderRadius: '6px', fontSize: '13px', backgroundColor: '#fff', color: '#78350f' }}
+          >
+            <option value="1">1일 뒤 자동 삭제</option>
+            <option value="2">2일 뒤 자동 삭제</option>
+            <option value="3">3일 뒤 자동 삭제</option>
+            <option value="7">7일 뒤 자동 삭제</option>
+            <option value="0">삭제 기한 없음 (수동 삭제)</option>
+          </select>
+          <button
+            type="submit"
+            style={{ padding: '8px 16px', backgroundColor: '#d97706', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer' }}
+          >
+            메모 등록
+          </button>
+        </form>
+
+        {/* 등록된 메모 목록 리스트 */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '160px', overflowY: 'auto' }}>
+          {memos.length === 0 ? (
+            <p style={{ margin: '0', fontSize: '13px', color: '#92400e', textAlign: 'center', padding: '8px' }}>등록된 공유 메모가 없습니다.</p>
+          ) : (
+            memos.map((memo) => {
+              let expireText = '기한 없음'
+              if (memo.expires_at) {
+                const diffTime = memo.expires_at - Date.now()
+                const diffHours = Math.ceil(diffTime / (1000 * 60 * 60))
+                if (diffHours <= 0) expireText = '만료됨'
+                else if (diffHours < 24) expireText = `약 ${diffHours}시간 후 삭제`
+                else expireText = `약 ${Math.ceil(diffHours / 24)}일 후 삭제`
+              }
+
+              return (
+                <div key={memo.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: '8px 12px', borderRadius: '6px', border: '1px solid #fef3c7', fontSize: '13px' }}>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: '1' }}>
+                    <span style={{ fontWeight: 'bold', color: '#b45309', backgroundColor: '#fef3c7', padding: '2px 6px', borderRadius: '4px', fontSize: '11px' }}>{memo.author}</span>
+                    <span style={{ color: '#1e293b' }}>{memo.content}</span>
+                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>({expireText})</span>
+                  </div>
+                  <button
+                    onClick={() => deleteMemo(memo.id)}
+                    style={{ padding: '2px 8px', backgroundColor: '#fee2e2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}
+                  >
+                    삭제
+                  </button>
+                </div>
+              )
+            })
+          )}
+        </div>
+      </div>
+
       {userRole === 'director' && (
         <form onSubmit={addStudent} className="register-form">
           <input
@@ -707,7 +848,7 @@ function App() {
           })}
         </div>
 
-        {/* [정렬 카테고리 선택 영역] */}
+        {/* [정렬 카테고리 선택 영역 - 기본/학년순] */}
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '12px', padding: '10px', backgroundColor: '#eff6ff', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
           <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#1e40af' }}>🔄 정렬:</span>
           <button
