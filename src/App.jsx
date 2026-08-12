@@ -4,14 +4,12 @@ import './App.css'
 
 const GRADE_OPTIONS = [
   '초1', '초2', '초3', '초4', '초5', '초6',
-  '중1', '중2', '중3',
-  '고1', '고2', '고3'
+  '중1', '중2', '중3'
 ]
 
 const GRADE_ORDER = {
   '초1': 1, '초2': 2, '초3': 3, '초4': 4, '초5': 5, '초6': 6,
-  '중1': 7, '중2': 8, '중3': 9,
-  '고1': 10, '고2': 11, '고3': 12
+  '중1': 7, '중2': 8, '중3': 9
 }
 
 const DURATION_OPTIONS = [
@@ -562,7 +560,6 @@ function App() {
       if (filter === '미등원') return student.attendance === '미등원' || !student.attendance
       if (filter === '초등') return level.startsWith('초')
       if (filter === '중등') return level.startsWith('중')
-      if (filter === '고등') return level.startsWith('고')
       return true
     })
     .sort((a, b) => {
@@ -830,7 +827,7 @@ function App() {
 
         {/* 상태/그룹 필터 탭 */}
         <div className="filter-tabs">
-          {['전체', '등원', '하원', '미등원', '초등', '중등', '고등'].map((tab) => {
+          {['전체', '등원', '하원', '미등원', '초등', '중등'].map((tab) => {
             let countText = ''
             if (tab === '등원') countText = `(${roleFilteredStudents.filter(s => s.attendance === '등원').length})`
             if (tab === '하원') countText = `(${roleFilteredStudents.filter(s => s.attendance === '하원').length})`
