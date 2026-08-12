@@ -131,6 +131,7 @@ function App() {
     if (role) {
       setUserRole(role)
       localStorage.setItem('academy_user_role', role)
+      setFilter('전체')
     } else {
       alert('비밀번호가 틀렸습니다.')
     }
@@ -516,20 +517,28 @@ function App() {
     return `${h}시간 ${m}분`
   }
 
+  // 선생님별 담당 학생 필터링
   const roleFilteredStudents = students.filter(student => {
     const userSubjects = student.subjects || '영어+수학'
     if (userRole === 'english') {
-      const isEnglishIncluded = userSubjects.includes('영어')
-      const isCurrentlyMath = student.attendance === '등원' && student.current_subject === '수학'
-      return isEnglishIncluded && !isCurrentlyMath
+      return userSubjects.includes('영어')
     }
     if (userRole === 'math') {
-      const isMathIncluded = userSubjects.includes('수학')
-      const isCurrentlyEnglish = student.attendance === '등원' && student.current_subject === '영어'
-      return isMathIncluded && !isCurrentlyEnglish
+      return userSubjects.includes('수학')
     }
     return true
   })
+
+  // 선생님별 필터 탭 구성 (수학 쌤은 수학 탭 제거, 영어 쌤은 영어 탭 제거)
+  const getAvailableTabs = () => {
+    if (userRole === 'math') {
+      return ['전체', '등원', '하원', '미등원', '초등', '중등', '영어']
+    }
+    if (userRole === 'english') {
+      return ['전체', '등원', '하원', '미등원', '초등', '중등', '수학']
+    }
+    return ['전체', '등원', '하원', '미등원', '초등', '중등', '영어', '수학']
+  }
 
   const getCardStatus = (student) => {
     if (student.attendance !== '등원' || !student.end_timestamp) return 'normal'
@@ -563,6 +572,13 @@ function App() {
       if (filter === '미등원') return student.attendance === '미등원' || !student.attendance
       if (filter === '초등') return level.startsWith('초')
       if (filter === '중등') return level.startsWith('중')
+      
+      // 영어 탭
+      if (filter === '영어') return student.attendance === '등원' && student.current_subject === '영어'
+      
+      // 수학 탭
+      if (filter === '수학') return student.attendance === '등원' && student.current_subject === '수학'
+      
       return true
     })
     .sort((a, b) => {
@@ -826,11 +842,13 @@ function App() {
         />
 
         <div className="filter-tabs">
-          {['전체', '등원', '하원', '미등원', '초등', '중등'].map((tab) => {
+          {getAvailableTabs().map((tab) => {
             let countText = ''
             if (tab === '등원') countText = `(${roleFilteredStudents.filter(s => s.attendance === '등원').length})`
             if (tab === '하원') countText = `(${roleFilteredStudents.filter(s => s.attendance === '하원').length})`
             if (tab === '미등원') countText = `(${roleFilteredStudents.filter(s => s.attendance === '미등원' || !s.attendance).length})`
+            if (tab === '영어') countText = `(${roleFilteredStudents.filter(s => s.attendance === '등원' && s.current_subject === '영어').length})`
+            if (tab === '수학') countText = `(${roleFilteredStudents.filter(s => s.attendance === '등원' && s.current_subject === '수학').length})`
 
             return (
               <button
@@ -921,7 +939,7 @@ function App() {
                       </div>
 
                       <div className="card-actions">
-                        {(userRole === 'director' || userRole === 'english') && (userSubjects.includes('영어')) && (
+                        {userSubjects.includes('영어') && (
                           <button 
                             onClick={() => handleCheckIn(student, '영어')} 
                             className={`action-btn ${student.attendance === '등원' && student.current_subject === '영어' ? 'btn-eng-active' : 'btn-default'}`}
@@ -929,7 +947,7 @@ function App() {
                             등원(영)
                           </button>
                         )}
-                        {(userRole === 'director' || userRole === 'math') && (userSubjects.includes('수학')) && (
+                        {userSubjects.includes('수학') && (
                           <button 
                             onClick={() => handleCheckIn(student, '수학')} 
                             className={`action-btn ${student.attendance === '등원' && student.current_subject === '수학' ? 'btn-math-active' : 'btn-default'}`}
