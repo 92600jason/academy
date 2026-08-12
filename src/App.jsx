@@ -40,14 +40,18 @@ function App() {
   const [editSubjects, setEditSubjects] = useState('영어+수학')
   const [editDefaultDuration, setEditDefaultDuration] = useState(60)
 
+  // 직접 입력(시간 조정) 관련 상태
+  const [customAdjustId, setCustomAdjustId] = useState(null)
+  const [customAdjustValue, setCustomAdjustValue] = useState('')
+
   const [filter, setFilter] = useState('전체')
-  const [sortCategory, setSortCategory] = useState('default') // 'default', 'grade'
+  const [sortCategory, setSortCategory] = useState('default')
   const [searchQuery, setSearchQuery] = useState('')
   
   // 공용 메모 관련 상태
   const [memos, setMemos] = useState([])
   const [newMemoContent, setNewMemoContent] = useState('')
-  const [newMemoExpireDays, setNewMemoExpireDays] = useState('1') // 기본 1일 후 자동 삭제
+  const [newMemoExpireDays, setNewMemoExpireDays] = useState('1')
   
   const [tick, setTick] = useState(0)
   const now = new Date()
@@ -198,7 +202,6 @@ function App() {
 
     if (!error && data) {
       const currentTime = Date.now()
-      // 만료된 메모 자동 필터링 및 삭제 처리
       const activeMemos = []
       for (const memo of data) {
         if (memo.expires_at && currentTime > memo.expires_at) {
@@ -234,7 +237,7 @@ function App() {
       setNewMemoContent('')
       fetchMemos()
     } else {
-      alert(`메모 등록 실패: ${error.message}\n(Supabase에 shared_memos 테이블이 있는지 확인해주세요)`)
+      alert(`메모 등록 실패: ${error.message}`)
     }
   }
 
@@ -715,13 +718,11 @@ function App() {
         </button>
       </div>
 
-      {/* [공유 메모 보드 섹션] */}
       <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px', padding: '16px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
         <h3 style={{ margin: '0 0 10px 0', fontSize: '15px', color: '#b45309', display: 'flex', alignItems: 'center', gap: '6px' }}>
           📌 선생님 공용 알림 및 공유 메모장
         </h3>
         
-        {/* 메모 작성 폼 */}
         <form onSubmit={addMemo} style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
           <input
             type="text"
@@ -749,7 +750,6 @@ function App() {
           </button>
         </form>
 
-        {/* 등록된 메모 목록 리스트 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '160px', overflowY: 'auto' }}>
           {memos.length === 0 ? (
             <p style={{ margin: '0', fontSize: '13px', color: '#92400e', textAlign: 'center', padding: '8px' }}>등록된 공유 메모가 없습니다.</p>
@@ -825,7 +825,6 @@ function App() {
           className="search-input"
         />
 
-        {/* 상태/그룹 필터 탭 */}
         <div className="filter-tabs">
           {['전체', '등원', '하원', '미등원', '초등', '중등'].map((tab) => {
             let countText = ''
@@ -845,7 +844,6 @@ function App() {
           })}
         </div>
 
-        {/* [정렬 카테고리 선택 영역 - 기본/학년순] */}
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '12px', padding: '10px', backgroundColor: '#eff6ff', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
           <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#1e40af' }}>🔄 정렬:</span>
           <button
@@ -962,23 +960,58 @@ function App() {
                     {student.attendance === '등원' && (
                       <div className="attending-details">
                         <span className="end-time-text">⏱️ {student.end_time}</span>
-                        <select 
-                          onChange={(e) => {
-                            const val = Number(e.target.value)
-                            if (val > 0) adjustCheckInTime(student, val)
-                            e.target.value = 0
-                          }}
-                          defaultValue={0}
-                          className="time-adjust-select"
-                        >
-                          <option value={0} disabled>⏰ 늦게 눌렀나요?</option>
-                          <option value={5}>5분 전</option>
-                          <option value={10}>10분 전</option>
-                          <option value={15}>15분 전</option>
-                          <option value={20}>20분 전</option>
-                          <option value={30}>30분 전</option>
-                          <option value={60}>60분 전</option>
-                        </select>
+                        
+                        {/* 직접 입력 칸 조건부 렌더링 */}
+                        {customAdjustId === student.id ? (
+                          <div style={{ display: 'inline-flex', gap: '4px', alignItems: 'center', backgroundColor: '#f1f5f9', padding: '4px', borderRadius: '6px' }}>
+                            <input 
+                              type="number" 
+                              value={customAdjustValue} 
+                              onChange={(e) => setCustomAdjustValue(e.target.value)} 
+                              placeholder="분" 
+                              style={{ width: '45px', padding: '4px', borderRadius: '4px', border: '1px solid #cbd5e1', textAlign: 'center', fontSize: '13px' }}
+                              autoFocus
+                            />
+                            <span style={{ fontSize: '12px', color: '#475569' }}>분 전</span>
+                            <button 
+                              onClick={() => {
+                                const val = Number(customAdjustValue)
+                                if (val > 0) adjustCheckInTime(student, val)
+                                setCustomAdjustId(null)
+                              }}
+                              style={{ padding: '4px 8px', fontSize: '12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                            >확인</button>
+                            <button 
+                              onClick={() => setCustomAdjustId(null)}
+                              style={{ padding: '4px 8px', fontSize: '12px', background: '#9ca3af', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                            >취소</button>
+                          </div>
+                        ) : (
+                          <select 
+                            onChange={(e) => {
+                              if (e.target.value === 'custom') {
+                                setCustomAdjustId(student.id)
+                                setCustomAdjustValue('')
+                              } else {
+                                const val = Number(e.target.value)
+                                if (val > 0) adjustCheckInTime(student, val)
+                              }
+                              e.target.value = 0
+                            }}
+                            defaultValue={0}
+                            className="time-adjust-select"
+                          >
+                            <option value={0} disabled>⏰ 늦게 눌렀나요?</option>
+                            <option value={5}>5분 전</option>
+                            <option value={10}>10분 전</option>
+                            <option value={15}>15분 전</option>
+                            <option value={20}>20분 전</option>
+                            <option value={30}>30분 전</option>
+                            <option value={60}>60분 전</option>
+                            <option value="custom">✍️ 직접 입력...</option>
+                          </select>
+                        )}
+
                         <span className="today-total-badge">
                           오늘 총: {formatMillisWithSeconds(todayStats.total)}
                         </span>
