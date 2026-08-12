@@ -517,19 +517,24 @@ function App() {
     return `${h}시간 ${m}분`
   }
 
-  // 선생님별 담당 학생 필터링
+  // 선생님별 담당 학생 및 과목 상태 필터링 (원장님은 모든 것 표시, 선생님은 '전체' 탭에서만 타과목 등원자 숨김)
   const roleFilteredStudents = students.filter(student => {
     const userSubjects = student.subjects || '영어+수학'
+
     if (userRole === 'english') {
-      return userSubjects.includes('영어')
+      if (!userSubjects.includes('영어')) return false
+      return true
     }
+
     if (userRole === 'math') {
-      return userSubjects.includes('수학')
+      if (!userSubjects.includes('수학')) return false
+      return true
     }
+
     return true
   })
 
-  // 선생님별 필터 탭 구성 (수학 쌤은 수학 탭 제거, 영어 쌤은 영어 탭 제거)
+  // 선생님별 필터 탭 구성
   const getAvailableTabs = () => {
     if (userRole === 'math') {
       return ['전체', '등원', '하원', '미등원', '초등', '중등', '영어']
@@ -567,16 +572,26 @@ function App() {
       
       const level = student.school_level || '초1'
 
+      // [핵심 로직] '전체' 탭일 때만 선생님 모드에서 타 과목 등원 중인 학생 숨김 (원장님은 모두 표시)
+      if (userRole !== 'director' && filter === '전체') {
+        if (userRole === 'english' && student.attendance === '등원' && student.current_subject === '수학') {
+          return false
+        }
+        if (userRole === 'math' && student.attendance === '등원' && student.current_subject === '영어') {
+          return false
+        }
+      }
+
       if (filter === '등원') return student.attendance === '등원'
       if (filter === '하원') return student.attendance === '하원'
       if (filter === '미등원') return student.attendance === '미등원' || !student.attendance
       if (filter === '초등') return level.startsWith('초')
       if (filter === '중등') return level.startsWith('중')
       
-      // 영어 탭
+      // 영어 탭 (영어 쌤 혹은 수학 쌤이 영어 중인 학생을 확인용으로 볼 때)
       if (filter === '영어') return student.attendance === '등원' && student.current_subject === '영어'
       
-      // 수학 탭
+      // 수학 탭 (수학 쌤 혹은 영어 쌤이 수학 중인 학생을 확인용으로 볼 때)
       if (filter === '수학') return student.attendance === '등원' && student.current_subject === '수학'
       
       return true
