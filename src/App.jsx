@@ -517,12 +517,13 @@ function App() {
     return `${h}시간 ${m}분`
   }
 
-  // 선생님별 담당 학생 및 과목 상태 필터링 (원장님은 모든 것 표시, 선생님은 '전체' 탭에서만 타과목 등원자 숨김)
+  // 선생님별 담당 학생 및 과목 상태 필터링 (원장님은 모든 것 표시, 선생님은 타과목 등원자 원천 차단)
   const roleFilteredStudents = students.filter(student => {
     const userSubjects = student.subjects || '영어+수학'
 
     if (userRole === 'english') {
       if (!userSubjects.includes('영어')) return false
+      // 영어 쌤 모드에서 수학 수업 중인 학생은 '전체' 및 기본 목록에서 숨김 (단, '수학' 탭에서는 볼 수 있게 허용해야 하므로 여기서는 유지하되 필터에서 처리)
       return true
     }
 
@@ -572,8 +573,8 @@ function App() {
       
       const level = student.school_level || '초1'
 
-      // [핵심 로직] '전체' 탭일 때만 선생님 모드에서 타 과목 등원 중인 학생 숨김 (원장님은 모두 표시)
-      if (userRole !== 'director' && filter === '전체') {
+      // [핵심 로직] 원장님이 아닐 때, '전체', '등원', '하원', '미등원', '초등', '중등' 탭에서는 타 과목 등원 중인 학생을 무조건 숨김
+      if (userRole !== 'director' && filter !== '영어' && filter !== '수학') {
         if (userRole === 'english' && student.attendance === '등원' && student.current_subject === '수학') {
           return false
         }
@@ -859,7 +860,7 @@ function App() {
         <div className="filter-tabs">
           {getAvailableTabs().map((tab) => {
             let countText = ''
-            if (tab === '등원') countText = `(${roleFilteredStudents.filter(s => s.attendance === '등원').length})`
+            if (tab === '등원') countText = `(${roleFilteredStudents.filter(s => s.attendance === '등원' && (userRole === 'director' || (userRole === 'english' && s.current_subject !== '수학') || (userRole === 'math' && s.current_subject !== '영어'))).length})`
             if (tab === '하원') countText = `(${roleFilteredStudents.filter(s => s.attendance === '하원').length})`
             if (tab === '미등원') countText = `(${roleFilteredStudents.filter(s => s.attendance === '미등원' || !s.attendance).length})`
             if (tab === '영어') countText = `(${roleFilteredStudents.filter(s => s.attendance === '등원' && s.current_subject === '영어').length})`
