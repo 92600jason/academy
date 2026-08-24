@@ -334,7 +334,7 @@ function App() {
   }
 
   async function adjustCheckInTime(student, minutesAgo) {
-    if (!student.first_checkin_timestamp) return
+    if (!student.first_checkin_timestamp || !student.current_subject) return
 
     const newCheckinTime = student.first_checkin_timestamp - (minutesAgo * 60000)
     const targetMins = student.target_minutes || student.default_duration || 60
@@ -344,15 +344,37 @@ function App() {
     const startTimeStr = startTimeObj.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
     const endTimeStr = newEndTimeObj.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
 
+    // 1. 학생 테이블의 등원 시간 및 종료 시간 보정
     const { error } = await supabase.from('students').update({
       first_checkin_timestamp: newCheckinTime,
       end_timestamp: newEndTimeObj.getTime(),
       end_time: `${student.current_subject}(${targetMins}분): ${startTimeStr} ~ ${endTimeStr}`
     }).eq('id', student.id)
 
-    if (!error) {
-      fetchStudents()
+    if (error) {
+      alert(`시간 보정 실패: ${error.message}`)
+      return
     }
+
+    // 2. 오늘 해당 학생의 첫 '등원' 또는 '전환' 로그를 찾아 시간(created_at, timestamp_str)을 함께 보정
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    
+    const targetLog = todayLogsData.find(l => 
+      l.student_name === student.name && 
+      (l.status === '등원' || l.status.includes('전환')) &&
+      l.subject === student.current_subject &&
+      (l.created_at ? l.created_at.startsWith(todayStr) : l.timestamp_str.includes(todayStr))
+    )
+
+    if (targetLog) {
+      await supabase.from('attendance_logs').update({
+        timestamp_str: startTimeObj.toLocaleString('ko-KR'),
+        created_at: startTimeObj.toISOString()
+      }).eq('id', targetLog.id)
+    }
+
+    fetchStudents()
+    fetchLogsForTodayOnly()
   }
 
   async function deleteStudent(id, name) {
