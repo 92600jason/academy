@@ -388,12 +388,12 @@ function App() {
       current_subject: subject,
       end_time: `${subject}(${minutesToAdd}분): ${startTimeStr} ~ ${endTimeStr}`,
       end_timestamp: endTimeObj.getTime(),
-      first_checkin_timestamp: current.getTime(), 
+      first_checkin_timestamp: !isSwitching ? current.getTime() : student.first_checkin_timestamp,
       target_minutes: minutesToAdd,
       completed_subjects: completedList
     }).eq('id', student.id)
 
-    const logStatus = student.attendance === '등원' ? `${subject} 전환` : '등원'
+    const logStatus = isSwitching ? `${subject} 전환` : '등원'
     await logAttendance(student.name, subject, logStatus)
     fetchStudents()
     fetchLogsForTodayOnly()
@@ -436,10 +436,12 @@ function App() {
     let englishMs = 0
     let mathMs = 0
 
+    const sortedLogs = [...logs].filter(l => l.student_name === student.name).sort((a, b) => new Date(a.created_at || a.timestamp_str) - new Date(b.created_at || b.timestamp_str))
+
     let currentSubject = null
     let startTime = null
 
-    logs.filter(l => l.student_name === student.name).forEach((log) => {
+    sortedLogs.forEach((log) => {
       const logDate = log.created_at ? new Date(log.created_at) : new Date(log.timestamp_str)
       if (isNaN(logDate.getTime())) return
 
@@ -447,19 +449,12 @@ function App() {
       if (logDateStr !== todayStr) return
 
       if (log.status === '등원' || log.status.includes('전환')) {
-        if (currentSubject && startTime) {
-          const diff = logDate.getTime() - startTime.getTime()
-          if (diff > 0 && diff < 21600000) {
-            if (currentSubject === '영어') englishMs += diff
-            if (currentSubject === '수학') mathMs += diff
-          }
-        }
         currentSubject = log.subject
         startTime = logDate
       } else if (log.status === '하원' || log.status === '미등원' || log.status.includes('종료')) {
         if (currentSubject && startTime) {
           const diff = logDate.getTime() - startTime.getTime()
-          if (diff > 0 && diff < 21600000) {
+          if (diff > 0 && diff < 43200000) {
             if (currentSubject === '영어') englishMs += diff
             if (currentSubject === '수학') mathMs += diff
           }
@@ -469,23 +464,11 @@ function App() {
       }
     })
 
-    if (currentSubject && startTime) {
-      const diff = now.getTime() - startTime.getTime()
-      if (diff > 0 && diff < 21600000) {
-        if (currentSubject === '영어') englishMs += diff
-        if (currentSubject === '수학') mathMs += diff
-      }
-    }
-
-    if (student.attendance === '등원' && student.first_checkin_timestamp && student.current_subject) {
-      const liveDiff = now.getTime() - student.first_checkin_timestamp
-      if (liveDiff > 0) {
-        if (student.current_subject === '영어') {
-          englishMs = Math.max(englishMs, liveDiff)
-        }
-        if (student.current_subject === '수학') {
-          mathMs = Math.max(mathMs, liveDiff)
-        }
+    if (student.attendance === '등원' && currentSubject && startTime) {
+      const liveDiff = now.getTime() - startTime.getTime()
+      if (liveDiff > 0 && liveDiff < 43200000) {
+        if (currentSubject === '영어') englishMs += liveDiff
+        if (currentSubject === '수학') mathMs += liveDiff
       }
     }
 
@@ -517,13 +500,11 @@ function App() {
     return `${h}시간 ${m}분`
   }
 
-  // 선생님별 담당 학생 및 과목 상태 필터링 (원장님은 모든 것 표시, 선생님은 타과목 등원자 원천 차단)
   const roleFilteredStudents = students.filter(student => {
     const userSubjects = student.subjects || '영어+수학'
 
     if (userRole === 'english') {
       if (!userSubjects.includes('영어')) return false
-      // 영어 쌤 모드에서 수학 수업 중인 학생은 '전체' 및 기본 목록에서 숨김 (단, '수학' 탭에서는 볼 수 있게 허용해야 하므로 여기서는 유지하되 필터에서 처리)
       return true
     }
 
@@ -535,7 +516,6 @@ function App() {
     return true
   })
 
-  // 선생님별 필터 탭 구성
   const getAvailableTabs = () => {
     if (userRole === 'math') {
       return ['전체', '등원', '하원', '미등원', '초등', '중등', '영어']
@@ -573,7 +553,6 @@ function App() {
       
       const level = student.school_level || '초1'
 
-      // [핵심 로직] 원장님이 아닐 때, '전체', '등원', '하원', '미등원', '초등', '중등' 탭에서는 타 과목 등원 중인 학생을 무조건 숨김
       if (userRole !== 'director' && filter !== '영어' && filter !== '수학') {
         if (userRole === 'english' && student.attendance === '등원' && student.current_subject === '수학') {
           return false
@@ -589,10 +568,7 @@ function App() {
       if (filter === '초등') return level.startsWith('초')
       if (filter === '중등') return level.startsWith('중')
       
-      // 영어 탭 (영어 쌤 혹은 수학 쌤이 영어 중인 학생을 확인용으로 볼 때)
       if (filter === '영어') return student.attendance === '등원' && student.current_subject === '영어'
-      
-      // 수학 탭 (수학 쌤 혹은 영어 쌤이 수학 중인 학생을 확인용으로 볼 때)
       if (filter === '수학') return student.attendance === '등원' && student.current_subject === '수학'
       
       return true
@@ -649,13 +625,6 @@ function App() {
       }
 
       if (log.status === '등원' || log.status.includes('전환')) {
-        if (currentSubject && startTime) {
-          const diff = logDate.getTime() - startTime.getTime()
-          if (diff > 0) {
-            if (currentSubject === '영어') summary[dateKey].english += diff
-            if (currentSubject === '수학') summary[dateKey].math += diff
-          }
-        }
         currentSubject = log.subject
         startTime = logDate
       } else if (log.status === '하원' || log.status === '미등원' || log.status.includes('종료')) {
@@ -995,7 +964,6 @@ function App() {
                       <div className="attending-details">
                         <span className="end-time-text">⏱️ {student.end_time}</span>
                         
-                        {/* 직접 입력 칸 조건부 렌더링 */}
                         {customAdjustId === student.id ? (
                           <div style={{ display: 'inline-flex', gap: '4px', alignItems: 'center', backgroundColor: '#f1f5f9', padding: '4px', borderRadius: '6px' }}>
                             <input 
