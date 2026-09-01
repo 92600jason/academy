@@ -54,7 +54,6 @@ function App() {
   const [newMemoExpireDays, setNewMemoExpireDays] = useState('1')
   
   const [tick, setTick] = useState(0)
-  const now = new Date()
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -146,6 +145,7 @@ function App() {
   async function fetchStudents() {
     const { data, error } = await supabase.from('students').select().order('id', { ascending: true })
     if (!error && data) {
+      const now = new Date()
       const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
       
       const updatedStudents = await Promise.all(
@@ -254,7 +254,7 @@ function App() {
       const nowObj = new Date()
       const timeStr = nowObj.toLocaleString('ko-KR')
       const isoStr = nowObj.toISOString()
-      await supabase.from('attendance_logs').insert([
+      const { data, error } = await supabase.from('attendance_logs').insert([
         { 
           student_name: studentName, 
           subject: subject, 
@@ -262,7 +262,11 @@ function App() {
           timestamp_str: timeStr,
           created_at: isoStr
         }
-      ])
+      ]).select()
+
+      if (!error && data) {
+        setTodayLogsData(prev => [...prev, data[0]])
+      }
     } catch (e) {}
   }
 
@@ -344,7 +348,6 @@ function App() {
     const startTimeStr = startTimeObj.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
     const endTimeStr = newEndTimeObj.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
 
-    // 1. 학생 테이블의 등원 시간 및 종료 시간 보정
     const { error } = await supabase.from('students').update({
       first_checkin_timestamp: newCheckinTime,
       end_timestamp: newEndTimeObj.getTime(),
@@ -356,7 +359,7 @@ function App() {
       return
     }
 
-    // 2. 오늘 해당 학생의 첫 '등원' 또는 '전환' 로그를 찾아 시간(created_at, timestamp_str)을 함께 보정
+    const now = new Date()
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
     
     const targetLog = todayLogsData.find(l => 
@@ -405,7 +408,7 @@ function App() {
       await logAttendance(student.name, student.current_subject, `${student.current_subject} 종료`)
     }
 
-    await supabase.from('students').update({ 
+    const { error } = await supabase.from('students').update({ 
       attendance: '등원',
       current_subject: subject,
       end_time: `${subject}(${minutesToAdd}분): ${startTimeStr} ~ ${endTimeStr}`,
@@ -415,10 +418,22 @@ function App() {
       completed_subjects: completedList
     }).eq('id', student.id)
 
+    if (!error) {
+      // 로컬 state 즉시 갱신 반영
+      setStudents(prev => prev.map(s => s.id === student.id ? {
+        ...s,
+        attendance: '등원',
+        current_subject: subject,
+        end_time: `${subject}(${minutesToAdd}분): ${startTimeStr} ~ ${endTimeStr}`,
+        end_timestamp: endTimeObj.getTime(),
+        first_checkin_timestamp: !isSwitching ? current.getTime() : s.first_checkin_timestamp,
+        target_minutes: minutesToAdd,
+        completed_subjects: completedList
+      } : s))
+    }
+
     const logStatus = isSwitching ? `${subject} 전환` : '등원'
     await logAttendance(student.name, subject, logStatus)
-    fetchStudents()
-    fetchLogsForTodayOnly()
   }
 
   async function handleStatusChange(student, status) {
@@ -434,9 +449,12 @@ function App() {
 
     await supabase.from('students').update(updateData).eq('id', student.id)
 
+    setStudents(prev => prev.map(s => s.id === student.id ? {
+      ...s,
+      ...updateData
+    } : s))
+
     await logAttendance(student.name, student.current_subject || '일반', status)
-    fetchStudents()
-    fetchLogsForTodayOnly()
   }
 
   async function openStudentCalendar(student) {
@@ -453,6 +471,7 @@ function App() {
   }
 
   const calculateSubjectDurations = (student, logs) => {
+    const now = new Date()
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
     
     let englishMs = 0
@@ -486,7 +505,14 @@ function App() {
       }
     })
 
-    if (student.attendance === '등원' && currentSubject && startTime) {
+    if (student.attendance === '등원' && student.current_subject && student.first_checkin_timestamp) {
+      const checkinTime = new Date(student.first_checkin_timestamp)
+      const liveDiff = now.getTime() - checkinTime.getTime()
+      if (liveDiff > 0 && liveDiff < 43200000) {
+        if (student.current_subject === '영어') englishMs += liveDiff
+        if (student.current_subject === '수학') mathMs += liveDiff
+      }
+    } else if (student.attendance === '등원' && currentSubject && startTime) {
       const liveDiff = now.getTime() - startTime.getTime()
       if (liveDiff > 0 && liveDiff < 43200000) {
         if (currentSubject === '영어') englishMs += liveDiff
@@ -549,6 +575,7 @@ function App() {
   }
 
   const getCardStatus = (student) => {
+    const now = new Date()
     if (student.attendance !== '등원' || !student.end_timestamp) return 'normal'
     const isExpired = now.getTime() > student.end_timestamp
     if (!isExpired) return 'normal'
