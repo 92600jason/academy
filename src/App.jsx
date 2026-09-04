@@ -125,7 +125,7 @@ function App() {
     let role = null
     if (passwordInput === '4507') role = 'director'
     else if (passwordInput === '0000') role = 'english'
-    else if (passwordInput === '0926') role = 'math'
+    else if (passwordInput === '8888') role = 'math'
 
     if (role) {
       setUserRole(role)
