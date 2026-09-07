@@ -52,6 +52,11 @@ function App() {
   const [memos, setMemos] = useState([])
   const [newMemoContent, setNewMemoContent] = useState('')
   const [newMemoExpireDays, setNewMemoExpireDays] = useState('1')
+
+  // 휴원 관련 상태
+  const [holidays, setHolidays] = useState([])
+  const [newHolidayDate, setNewHolidayDate] = useState('')
+  const [newHolidayReason, setNewHolidayReason] = useState('')
   
   const [tick, setTick] = useState(0)
 
@@ -63,9 +68,6 @@ function App() {
     return () => clearInterval(timer)
   }, [])
 
-  const [selectedStudent, setSelectedStudent] = useState(null)
-  const [studentLogs, setStudentLogs] = useState([])
-  const [calendarDate, setCalendarDate] = useState(new Date())
   const [todayLogsData, setTodayLogsData] = useState([])
 
   useEffect(() => {
@@ -74,11 +76,13 @@ function App() {
     fetchStudents()
     fetchLogsForTodayOnly()
     fetchMemos()
+    fetchHolidays()
 
     const handleFocus = () => {
       fetchStudents()
       fetchLogsForTodayOnly()
       fetchMemos()
+      fetchHolidays()
     }
     window.addEventListener('focus', handleFocus)
 
@@ -112,11 +116,21 @@ function App() {
       )
       .subscribe()
 
+    const holidayChannel = supabase
+      .channel('schema-holiday-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'holidays' },
+        () => fetchHolidays()
+      )
+      .subscribe()
+
     return () => {
       window.removeEventListener('focus', handleFocus)
       supabase.removeChannel(studentChannel)
       supabase.removeChannel(logChannel)
       supabase.removeChannel(memoChannel)
+      supabase.removeChannel(holidayChannel)
     }
   }, [userRole])
 
@@ -212,6 +226,44 @@ function App() {
         }
       }
       setMemos(activeMemos)
+    }
+  }
+
+  async function fetchHolidays() {
+    const { data, error } = await supabase
+      .from('holidays')
+      .select('*')
+      .order('date', { ascending: true })
+
+    if (!error && data) {
+      setHolidays(data)
+    }
+  }
+
+  async function addHoliday(e) {
+    e.preventDefault()
+    if (!newHolidayDate) return
+
+    const { error } = await supabase.from('holidays').insert([
+      {
+        date: newHolidayDate,
+        reason: newHolidayReason || '휴원'
+      }
+    ])
+
+    if (!error) {
+      setNewHolidayDate('')
+      setNewHolidayReason('')
+      fetchHolidays()
+    } else {
+      alert(`휴원 등록 실패: ${error.message}`)
+    }
+  }
+
+  async function deleteHoliday(id) {
+    const { error } = await supabase.from('holidays').delete().eq('id', id)
+    if (!error) {
+      fetchHolidays()
     }
   }
 
@@ -419,7 +471,6 @@ function App() {
     }).eq('id', student.id)
 
     if (!error) {
-      // 로컬 state 즉시 갱신 반영
       setStudents(prev => prev.map(s => s.id === student.id ? {
         ...s,
         attendance: '등원',
@@ -457,19 +508,6 @@ function App() {
     await logAttendance(student.name, student.current_subject || '일반', status)
   }
 
-  async function openStudentCalendar(student) {
-    setSelectedStudent(student)
-    setCalendarDate(new Date())
-
-    const { data, error } = await supabase
-      .from('attendance_logs')
-      .select('*')
-      .eq('student_name', student.name)
-      .order('created_at', { ascending: true })
-
-    if (!error) setStudentLogs(data || [])
-  }
-
   const calculateSubjectDurations = (student, logs) => {
     const now = new Date()
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
@@ -492,7 +530,7 @@ function App() {
       if (log.status === '등원' || log.status.includes('전환')) {
         currentSubject = log.subject
         startTime = logDate
-      } else if (log.status === '하원' || log.status === '미등원' || log.status.includes('종료')) {
+      } else if (log.status === '하원' || log.status === '미등원' || log.status === '휴원' || log.status.includes('종료')) {
         if (currentSubject && startTime) {
           const diff = logDate.getTime() - startTime.getTime()
           if (diff > 0 && diff < 43200000) {
@@ -538,16 +576,6 @@ function App() {
     return `${h}시간 ${m}분 ${s}초`
   }
 
-  const formatMillisForCalendar = (ms) => {
-    if (!ms || ms <= 0) return '0분'
-    const mins = Math.floor(ms / 60000)
-    const h = Math.floor(mins / 60)
-    const m = mins % 60
-    if (h === 0) return `${m}분`
-    if (m === 0) return `${h}시간`
-    return `${h}시간 ${m}분`
-  }
-
   const roleFilteredStudents = students.filter(student => {
     const userSubjects = student.subjects || '영어+수학'
 
@@ -566,12 +594,12 @@ function App() {
 
   const getAvailableTabs = () => {
     if (userRole === 'math') {
-      return ['전체', '등원', '하원', '미등원', '초등', '중등', '영어']
+      return ['전체', '등원', '하원', '미등원', '휴원', '초등', '중등', '영어']
     }
     if (userRole === 'english') {
-      return ['전체', '등원', '하원', '미등원', '초등', '중등', '수학']
+      return ['전체', '등원', '하원', '미등원', '휴원', '초등', '중등', '수학']
     }
-    return ['전체', '등원', '하원', '미등원', '초등', '중등', '영어', '수학']
+    return ['전체', '등원', '하원', '미등원', '휴원', '초등', '중등', '영어', '수학']
   }
 
   const getCardStatus = (student) => {
@@ -614,6 +642,7 @@ function App() {
       if (filter === '등원') return student.attendance === '등원'
       if (filter === '하원') return student.attendance === '하원'
       if (filter === '미등원') return student.attendance === '미등원' || !student.attendance
+      if (filter === '휴원') return student.attendance === '휴원'
       if (filter === '초등') return level.startsWith('초')
       if (filter === '중등') return level.startsWith('중')
       
@@ -627,8 +656,9 @@ function App() {
         const getStatusPriority = (s) => {
           if (s.attendance === '등원') return 1
           if (s.attendance === '미등원' || !s.attendance) return 2
-          if (s.attendance === '하원') return 3
-          return 4
+          if (s.attendance === '휴원') return 3
+          if (s.attendance === '하원') return 4
+          return 5
         }
         const pA = getStatusPriority(a)
         const pB = getStatusPriority(b)
@@ -657,78 +687,6 @@ function App() {
 
       return 0
     })
-
-  const getDailyStudySummary = () => {
-    const summary = {}
-    let currentSubject = null
-    let startTime = null
-
-    studentLogs.forEach((log) => {
-      const logDate = log.created_at ? new Date(log.created_at) : new Date(log.timestamp_str)
-      if (isNaN(logDate.getTime())) return
-
-      const dateKey = `${logDate.getFullYear()}-${String(logDate.getMonth() + 1).padStart(2, '0')}-${String(logDate.getDate()).padStart(2, '0')}`
-
-      if (!summary[dateKey]) {
-        summary[dateKey] = { english: 0, math: 0 }
-      }
-
-      if (log.status === '등원' || log.status.includes('전환')) {
-        currentSubject = log.subject
-        startTime = logDate
-      } else if (log.status === '하원' || log.status === '미등원' || log.status.includes('종료')) {
-        if (currentSubject && startTime) {
-          const diff = logDate.getTime() - startTime.getTime()
-          if (diff > 0) {
-            if (currentSubject === '영어') summary[dateKey].english += diff
-            if (currentSubject === '수학') summary[dateKey].math += diff
-          }
-        }
-        currentSubject = null
-        startTime = null
-      }
-    })
-
-    return summary
-  }
-
-  const renderCalendar = () => {
-    const year = calendarDate.getFullYear()
-    const month = calendarDate.getMonth()
-
-    const firstDay = new Date(year, month, 1).getDay()
-    const daysInMonth = new Date(year, month + 1, 0).getDate()
-
-    const dailySummary = getDailyStudySummary()
-    const days = []
-
-    for (let i = 0; i < firstDay; i++) {
-      days.push(<div key={`empty-${i}`} className="calendar-empty" />)
-    }
-
-    for (let day = 1; day <= daysInMonth; day++) {
-      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-      const info = dailySummary[dateStr]
-
-      const hasData = info && (info.english > 0 || info.math > 0)
-      const totalMs = hasData ? (info.english + info.math) : 0
-
-      days.push(
-        <div key={day} className={`calendar-day ${hasData ? 'has-data' : ''}`}>
-          <div className="calendar-day-number">{day}</div>
-          {hasData ? (
-            <div className="calendar-day-info">
-              <div className="calendar-total">총: {formatMillisForCalendar(totalMs)}</div>
-              {info.english > 0 && <div className="calendar-eng">영: {formatMillisForCalendar(info.english)}</div>}
-              {info.math > 0 && <div className="calendar-math">수: {formatMillisForCalendar(info.math)}</div>}
-            </div>
-          ) : null}
-        </div>
-      )
-    }
-
-    return days
-  }
 
   if (!userRole) {
     return (
@@ -766,6 +724,60 @@ function App() {
         <button onClick={handleLogout} className="logout-btn">
           로그아웃
         </button>
+      </div>
+
+      {/* 휴원 관리 패널 */}
+      <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', padding: '16px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+        <h3 style={{ margin: '0 0 10px 0', fontSize: '15px', color: '#166534', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          🏖️ 학원 휴원 일정 관리
+        </h3>
+        
+        {userRole === 'director' && (
+          <form onSubmit={addHoliday} style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+            <input
+              type="date"
+              value={newHolidayDate}
+              onChange={(e) => setNewHolidayDate(e.target.value)}
+              style={{ padding: '8px 12px', border: '1px solid #86efac', borderRadius: '6px', fontSize: '13px', backgroundColor: '#fff' }}
+            />
+            <input
+              type="text"
+              placeholder="휴원 사유 입력 (예: 추석 연휴, 임시 휴원)"
+              value={newHolidayReason}
+              onChange={(e) => setNewHolidayReason(e.target.value)}
+              style={{ flex: '1', minWidth: '200px', padding: '8px 12px', border: '1px solid #86efac', borderRadius: '6px', fontSize: '13px', backgroundColor: '#fff' }}
+            />
+            <button
+              type="submit"
+              style={{ padding: '8px 16px', backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer' }}
+            >
+              휴원 등록
+            </button>
+          </form>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '140px', overflowY: 'auto' }}>
+          {holidays.length === 0 ? (
+            <p style={{ margin: '0', fontSize: '13px', color: '#15803d', textAlign: 'center', padding: '8px' }}>등록된 휴원 일정이 없습니다.</p>
+          ) : (
+            holidays.map((holiday) => (
+              <div key={holiday.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: '8px 12px', borderRadius: '6px', border: '1px solid #dcfce7', fontSize: '13px' }}>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <span style={{ fontWeight: 'bold', color: '#166534', backgroundColor: '#dcfce7', padding: '2px 6px', borderRadius: '4px', fontSize: '12px' }}>{holiday.date}</span>
+                  <span style={{ color: '#1e293b' }}>{holiday.reason}</span>
+                </div>
+                {userRole === 'director' && (
+                  <button
+                    onClick={() => deleteHoliday(holiday.id)}
+                    style={{ padding: '2px 8px', backgroundColor: '#fee2e2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 'bold' }}
+                  >
+                    삭제
+                  </button>
+                )}
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
       <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px', padding: '16px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
@@ -881,6 +893,7 @@ function App() {
             if (tab === '등원') countText = `(${roleFilteredStudents.filter(s => s.attendance === '등원' && (userRole === 'director' || (userRole === 'english' && s.current_subject !== '수학') || (userRole === 'math' && s.current_subject !== '영어'))).length})`
             if (tab === '하원') countText = `(${roleFilteredStudents.filter(s => s.attendance === '하원').length})`
             if (tab === '미등원') countText = `(${roleFilteredStudents.filter(s => s.attendance === '미등원' || !s.attendance).length})`
+            if (tab === '휴원') countText = `(${roleFilteredStudents.filter(s => s.attendance === '휴원').length})`
             if (tab === '영어') countText = `(${roleFilteredStudents.filter(s => s.attendance === '등원' && s.current_subject === '영어').length})`
             if (tab === '수학') countText = `(${roleFilteredStudents.filter(s => s.attendance === '등원' && s.current_subject === '수학').length})`
 
@@ -967,9 +980,6 @@ function App() {
                       <div className="card-left-info">
                         <strong className="student-name">{student.name}</strong> 
                         <span className="student-meta">({student.school_level || '초1'} / {userSubjects})</span>
-                        <button onClick={() => openStudentCalendar(student)} className="calendar-open-btn">
-                          📅 달력
-                        </button>
                       </div>
 
                       <div className="card-actions">
@@ -1001,6 +1011,12 @@ function App() {
                           className={`action-btn ${student.attendance === '미등원' ? 'btn-absent-active' : 'btn-default'}`}
                         >
                           미등원
+                        </button>
+                        <button 
+                          onClick={() => handleStatusChange(student, '휴원')} 
+                          className={`action-btn ${student.attendance === '휴원' ? 'btn-holiday-active' : 'btn-default'}`}
+                        >
+                          휴원
                         </button>
                         <button onClick={() => startEdit(student)} className="utility-btn btn-edit">수정</button>
                         {userRole === 'director' && (
@@ -1094,41 +1110,6 @@ function App() {
           })
         )}
       </div>
-
-      {selectedStudent && (
-        <div className="modal-backdrop">
-          <div className="modal-box">
-            <div className="modal-header">
-              <h3 className="modal-title">📊 {selectedStudent.name} 학생 학습 달력</h3>
-              <button onClick={() => setSelectedStudent(null)} className="modal-close-btn">닫기</button>
-            </div>
-
-            <div className="modal-nav-row">
-              <button onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))} className="modal-nav-btn">
-                ◀ 이전달
-              </button>
-              <strong className="modal-current-month">{calendarDate.getFullYear()}년 {calendarDate.getMonth() + 1}월</strong>
-              <button onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))} className="modal-nav-btn">
-                다음달 ▶
-              </button>
-            </div>
-
-            <div className="calendar-header-grid">
-              <div className="day-sun">일</div>
-              <div>월</div>
-              <div>화</div>
-              <div>수</div>
-              <div>목</div>
-              <div>금</div>
-              <div className="day-sat">토</div>
-            </div>
-
-            <div className="calendar-grid">
-              {renderCalendar()}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

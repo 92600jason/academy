@@ -612,3 +612,9 @@ body {
 .calendar-math {
   color: #7c3aed;
 }
+/* 휴원 버튼 눌렀을 때 색상 (주황색) */
+.btn-holiday-active {
+  background-color: #f97316 !important;
+  color: white !important;
+  border-color: #f97316 !important;
+}
